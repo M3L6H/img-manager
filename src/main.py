@@ -2,6 +2,7 @@
 from typing import List
 
 import argparse
+import customtkinter
 import os
 import pathlib
 import sys
@@ -10,6 +11,7 @@ HOME = pathlib.Path.home()
 DATA_DIR = HOME.joinpath(".img-manager")
 LAST_DB = DATA_DIR.joinpath(".last-db")
 LIB_DIR = DATA_DIR.joinpath("lib")
+THEME = DATA_DIR.joinpath("theme.json")
 LOCAL_DIR = pathlib.Path.cwd()
 DEFAULT_DB = LOCAL_DIR.joinpath("db.sqlite")
 
@@ -19,6 +21,7 @@ import db
 import gui
 import utils
 
+customtkinter.set_default_color_theme(str(THEME))
 verbose = False
 
 def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argparse.Namespace:
@@ -82,7 +85,7 @@ def main(args: List[str]) -> None:
   if ns.add:
     utils.add(my_db, ns.add)
   elif ns.gui:
-    mw = gui.MainWindow()
+    mw = gui.MainWindow(my_db)
     mw.show()
 
   # image: Image = Image.create(my_db, local_path = "/test")

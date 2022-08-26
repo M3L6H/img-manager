@@ -204,8 +204,11 @@ class DB:
     elif kwargs:
       query = f"SELECT * FROM {table} WHERE"
       for k in kwargs:
-        query += f" {k}=?"
-      return self.__execute(query, fetch, tuple(kwargs.values()))
+        if kwargs[k] != "*":
+          query += f" {k}=?"
+        else:
+          query += f" {k} IS NOT NULL AND {k}!=?"
+      return self.__execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
 
     return self.__execute(f"SELECT * FROM {table}", fetch)
 

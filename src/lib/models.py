@@ -9,12 +9,12 @@ class ImageState:
 @db.model
 class Image:
   def __init__(self, local_path: str = "", thumbnail_path: str = "", cloud_url: str = ""):
-    self.__local_path = local_path
-    self.__thumbnail_path = thumbnail_path
-    self.__cloud_url = cloud_url
+    self.local_path = local_path
+    self.thumbnail_path = thumbnail_path
+    self.cloud_url = cloud_url
 
   def __repr__(self):
-    return f"<local_path: '{self.__local_path}'; thumbnail_path: '{self.__thumbnail_path}'; cloud_url: '{self.__cloud_url}'>"
+    return f"<local_path: '{self.local_path}'; thumbnail_path: '{self.thumbnail_path}'; cloud_url: '{self.cloud_url}'>"
 
   def __str__(self):
-    return f"local_path: '{self.__local_path}'; thumbnail_path: '{self.__thumbnail_path}'; cloud_url: '{self.__cloud_url}'"
+    return f"local_path: '{self.local_path}'; thumbnail_path: '{self.thumbnail_path}'; cloud_url: '{self.cloud_url}'"
