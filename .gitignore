@@ -1,0 +1,4 @@
+.vscode/
+*.sqlite
+*.session.sql
+pwords.txt
