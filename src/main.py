@@ -6,36 +6,34 @@ import os
 import pathlib
 import sys
 
-HOME = pathlib.PosixPath("/cygdrive/c/cygwin64/home/Michael")
+HOME = pathlib.Path.home()
 DATA_DIR = HOME.joinpath(".img-manager")
 LAST_DB = DATA_DIR.joinpath(".last-db")
 LIB_DIR = DATA_DIR.joinpath("lib")
-LOCAL_DIR = pathlib.PosixPath.cwd()
+LOCAL_DIR = pathlib.Path.cwd()
 DEFAULT_DB = LOCAL_DIR.joinpath("db.sqlite")
 
 sys.path.append(os.path.abspath(str(LIB_DIR)))
 
 import db
+import gui
+import utils
 
 verbose = False
 
-@db.model
-class Image:
-  def __init__(self, local_path: str = "", thumbnail_path: str = "", cloud_url: str = ""):
-    self.__local_path = local_path
-    self.__thumbnail_path = thumbnail_path
-    self.__cloud_url = cloud_url
-
-  def __repr__(self):
-    return f"<local_path: '{self.__local_path}'; thumbnail_path: '{self.__thumbnail_path}'; cloud_url: '{self.__cloud_url}'>"
-
-  def __str__(self):
-    return f"local_path: '{self.__local_path}'; thumbnail_path: '{self.__thumbnail_path}'; cloud_url: '{self.__cloud_url}'"
-
 def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argparse.Namespace:
+  parser.add_argument(
+    "-a", "--add",
+    help="Add media to be managed by img-manager. Can be a single file or directory"
+  )
   parser.add_argument(
     "--db",
     help="Specify path to db"
+  )
+  parser.add_argument(
+    "--gui",
+    action="store_true",
+    help="Launch the GUI"
   )
   parser.add_argument(
     "--verbose",
@@ -46,6 +44,11 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
 
 def validate_input(ns: argparse.Namespace) -> None:
   error = False
+
+  if ns.add:
+    if not (os.path.isfile(ns.add) or os.path.isdir(ns.add)):
+      print(f"{ns.add} is not a file or directory!")
+      error = True
 
   if not ns.db:
     if os.path.isfile(LAST_DB):
@@ -72,12 +75,20 @@ def main(args: List[str]) -> None:
 
   verbose = ns.verbose
 
+  # Connect to db
   my_db = db.DB(ns.db, verbose)
+
+  # Run operation
+  if ns.add:
+    utils.add(my_db, ns.add)
+  elif ns.gui:
+    mw = gui.MainWindow()
+    mw.show()
 
   # image: Image = Image.create(my_db, local_path = "/test")
   # print(image)
-  print(Image.find_by_id(my_db, 1))
-  print(Image.find_all(my_db))
+  # print(Image.find_by_id(my_db, 1))
+  # print(Image.find_all(my_db))
 
   my_db.disconnect()
 

@@ -164,11 +164,11 @@ class DB:
     self.__execute(f"INSERT INTO {table} ({columns}) VALUES {entries};")
     self.__connection.commit()
 
-  def query_one(self, table: str, id: int = None):
-    return self.__query(table, Fetch.ONE, id)
+  def query_one(self, table: str, id: int = None, **kwargs):
+    return self.__query(table, Fetch.ONE, id, **kwargs)
 
-  def query_all(self, table: str, id: int = None):
-    return self.__query(table, Fetch.ALL, id)
+  def query_all(self, table: str, id: int = None, **kwargs):
+    return self.__query(table, Fetch.ALL, id, **kwargs)
 
   def __copy_data(self, from_table: str, to_table: str) -> None:
     if self.__verbose:
@@ -197,12 +197,17 @@ class DB:
     except sqlite3.Error as e:
       print(f"Failed to execute {query} due to {e}")
 
-  def __query(self, table: str, fetch: Fetch, id: int = None) -> any:
+  def __query(self, table: str, fetch: Fetch, id: int = None, **kwargs) -> any:
     table = table.upper()
-    if not id:
-      return self.__execute(f"SELECT * FROM {table}", fetch)
-    else:
+    if id:
       return self.__execute(f"SELECT * FROM {table} WHERE id=?", fetch, (id,))
+    elif kwargs:
+      query = f"SELECT * FROM {table} WHERE"
+      for k in kwargs:
+        query += f" {k}=?"
+      return self.__execute(query, fetch, tuple(kwargs.values()))
+
+    return self.__execute(f"SELECT * FROM {table}", fetch)
 
   def __quote(self, val: any) -> any:
     if isinstance(val, str):
@@ -241,6 +246,12 @@ def model(my_class):
   data_str = "{" + ",".join([f"\"{p.name}\": {p.name}" for p in param_values if p.name != "self"]) + "}"
   param_str = ", ".join([str(p) for p in param_values if p.name != "self"])
 
+  def all(db: DB) -> List[my_class]:
+    res = db.query_all(table)
+    return [my_class(*entry[1:]) for entry in res]
+
+  my_class.all = all
+
   create_str = """
 def create(my_class, db, {params}):
   db.insert("{table}", {data})
@@ -249,18 +260,25 @@ def create(my_class, db, {params}):
   exec(create_str)
   my_class.create = classwrapper(my_class, locals()["create"])
 
+  def find_one(db: DB, **kwargs) -> List[my_class]:
+    res = db.query_one(table, **kwargs)
+    if res:
+      return my_class(*res[1:])
+
+  my_class.find_one = find_one
+
+  def find_all(db: DB, **kwargs) -> List[my_class]:
+    res = db.query_all(table, **kwargs)
+    return [my_class(*entry[1:]) for entry in res]
+
+  my_class.find_all = find_all
+
   def find_by_id(db: DB, id: int) -> Optional[my_class]:
     res = db.query_one(table, id)
     if res:
       return my_class(*res[1:])
 
   my_class.find_by_id = find_by_id
-
-  def find_all(db: DB) -> List[my_class]:
-    res = db.query_all(table)
-    return [my_class(*entry[1:]) for entry in res]
-
-  my_class.find_all = find_all
 
   return my_class
 
