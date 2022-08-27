@@ -85,7 +85,7 @@ def main(args: List[str]) -> None:
   if ns.add:
     utils.add(my_db, ns.add)
   elif ns.gui:
-    mw = gui.MainWindow(my_db)
+    mw = gui.MainWindow(my_db, verbose=verbose)
     mw.show()
 
   # image: Image = Image.create(my_db, local_path = "/test")
