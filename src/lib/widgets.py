@@ -13,6 +13,7 @@ import tempfile
 import threading
 import time
 import tkinter
+import vlc
 
 class CTkListbox(CTkBaseClass):
   def __init__(self, *args,
@@ -246,46 +247,28 @@ class VideoPlayer(CTkBaseClass):
       master=self
     )
     self.img.grid(row=0, column=0, sticky="nswe")
-    self.img.bind("<Button-1>", lambda _: self.kill())
 
-    self.player = None
+    self.condition = None
+    self.player_instance = vlc.Instance()
+    self.player: vlc.MediaPlayer = self.player_instance.media_player_new()
+    self.player.set_hwnd(self.winfo_id())
     self.state = PlayerState.STOPPED
-    self.t1 = None
-    self.t2 = None
-    self.t3 = None
-    self.t4 = None
     self.verbose = verbose
 
   def configure(self, require_redraw=False, **kwargs):
     if "file" in kwargs:
       if self.state != PlayerState.STOPPED:
-        self.kill()
+        self.stop()
 
       file = kwargs.pop("file")
       try:
         im = Image.open(file)
         im.verify()
-        if "image" not in kwargs:
-          kwargs["image"] = file
-      except:
-        self.dest = file
-        self.cap = cv2.VideoCapture(self.dest)
-
-        self.frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
-
-        self.play()
-
-    if "image" in kwargs:
-      try:
-        load = Image.open(kwargs.pop("image"))
-        image = ImageTk.PhotoImage(load)
-        self.img.configure(image=image)
-        self.img.image = image
-        load.close()
+        self.loadImage(kwargs.pop("image"))
         require_redraw = True
       except:
-        pass
+        self.dest = file
+        self.play()
 
     if "width" in kwargs:
       self.set_dimensions(width=kwargs.pop("width"))
@@ -295,191 +278,17 @@ class VideoPlayer(CTkBaseClass):
 
     super().configure(require_redraw=require_redraw, **kwargs)
 
+  def stop(self):
+    if self.state != PlayerState.PLAYING:
+      return
+
+    self.player.stop()
+    self.state = PlayerState.STOPPED
+
   def play(self):
     if self.dest is None or self.state == PlayerState.PLAYING:
       return
 
     self.state = PlayerState.PLAYING
-    self.fr_lock = threading.Lock()
-    self.frames_read = queue.Queue()
-    self.frame_files = queue.Queue() # list of temp files
-    self.frame_times = []
-    self.kill_threads = False
-
-    self.player = MediaPlayer(self.dest)
-    self.player.set_pause(True)
-
-    self.t1 = threading.Thread(target=self.readFrames)
-    self.t2 = threading.Thread(target=self.writeFrames)
-    self.t3 = threading.Thread(target=self.writeFrames)
-    self.t4 = threading.Thread(target=self.playVideo)
-
-    self.t1.start()
-    self.t2.start()
-    self.t3.start()
-    self.t4.start()
-
-  def kill(self):
-    if self.verbose:
-      print("Joining threads")
-
-    self.kill_threads = True
-    if self.t1:
-      self.t1.join()
-
-    self.state = PlayerState.STOPPED
-
-  def generateFrameTimes(self):
-    newFrames = self.frames
-
-    targetTime = 1/self.fps
-    times = 0
-
-    for _ in range(newFrames):
-      self.frame_times.append(times)
-      times += targetTime
-
-  def readFrames(self):
-    self.generateFrameTimes()
-    while(self.cap.isOpened()):
-      if(self.kill_threads == True):
-        self.t2.join()
-        self.t3.join()
-        if self.verbose:
-          print("Read thread terminated")
-        return
-
-      if(self.frames_read.qsize() > 10):
-        time.sleep(.01)
-        continue
-
-      ret, frame = self.cap.read()
-      if ret == True:
-        self.frames_read.put(frame)
-      else:
-        break
-
-    if self.verbose:
-      print("Read thread terminated")
-
-  # https://stackoverflow.com/questions/13379742/
-  # right-way-to-clean-up-a-temporary-folder-in-python-class
-  @contextlib.contextmanager
-  def make_temp_directory(self):
-    temp_dir = tempfile.TemporaryDirectory()
-    try:
-      yield temp_dir
-    finally:
-      temp_dir.cleanup()
-
-  def writeFrames(self):
-    time.sleep(1)
-    with self.make_temp_directory() as temp_dir:
-      while True:
-        if(self.kill_threads == True):
-          self.t4.join()
-          try:
-            temp_dir.cleanup()
-          except:
-            pass
-
-          if self.verbose:
-            print("Write thread terminated")
-          return
-
-        if self.frame_files.qsize() > 20:
-          time.sleep(.1)
-          continue
-
-        p = tempfile.NamedTemporaryFile('wb', suffix = '.jpg',
-                                        dir = temp_dir.name,
-                                        delete = False)
-
-        with self.fr_lock:
-          if self.frames_read.empty():
-            break
-
-          frame = self.frames_read.get()
-          self.frame_files.put(p)
-
-        frame = cv2.resize(frame, (self._desired_width,self._desired_height),
-                            interpolation = cv2.INTER_AREA)
-
-        cv2.imwrite(p.name,frame)
-        p.close()
-
-    if self.verbose:
-      print("Write thread terminated")
-
-  def playVideo(self):
-    while(self.frame_files.empty()):
-      if(self.kill_threads == True):
-        if self.verbose:
-          print("Play thread terminated")
-        return
-      time.sleep(0.5)
-
-    fps = self.fps
-    print(fps)
-    targetTime = 1/fps
-
-    pop = None
-
-    # load up the audio
-    self.player.set_pause(False)
-    audio_frame, val = self.player.get_frame()
-    while audio_frame == None:
-      if(self.kill_threads == True):
-        if self.verbose:
-          self.player.set_pause(True)
-          print("Play thread terminated")
-        return
-      audio_frame, val = self.player.get_frame()
-
-    running_time = time.time()
-
-    while(not self.frame_files.empty()):
-      if(self.kill_threads):
-        if self.verbose:
-          self.player.set_pause(True)
-          print("Play thread terminated")
-        return
-
-      audio_frame, val = self.player.get_frame()
-
-      if(val == 'eof' or len(self.frame_times) == 0):
-        break
-
-      if(audio_frame == None):
-        continue
-
-      # for any lag due to cpu, especially for dragging
-      # if(self.frame_files.qsize() < 5):
-      #   time.sleep(.08)
-
-      t = self.frame_times.pop(0)
-      pop: tempfile._TemporaryFileWrapper = self.frame_files.get()
-
-      cur_time = time.time() - running_time
-      delay = t - cur_time
-
-      # frame skipping
-      if (delay < -targetTime):
-        os.remove(pop.name)
-        continue
-
-      # diplay image
-      self.configure(image=pop.name)
-      pop.close()
-
-      os.remove(pop.name)
-
-      cur_time = time.time() - running_time
-      delay = t - cur_time
-
-      if (delay > targetTime):
-        time.sleep(targetTime)
-
-    # self.kill()
-    if self.verbose:
-      print("Play thread terminated")
+    self.player.set_media(self.player_instance.media_new(self.dest))
+    self.player.play()
