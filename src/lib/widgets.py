@@ -1,9 +1,10 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+from canvas_image import CanvasImage
 import enum
 from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, Settings, ThemeManager
 import pathlib
-from PIL import Image, ImageTk
+from PIL import Image, UnidentifiedImageError
 import sys
 import tkinter
 import vlc
@@ -241,13 +242,15 @@ class VideoPlayer(CTkBaseClass):
     self.draw_engine = DrawEngine(self.canvas)
 
     self.top_frame = CTkFrame(master=self)
+    self.top_frame.rowconfigure(0, weight=1)
+    self.top_frame.columnconfigure(0, weight=1)
     self.top_frame.grid(row=0, column=0, sticky="nswe")
 
-    self.img = tkinter.Label(
+    self.img = CanvasImage(
       master=self.top_frame,
       bg=ThemeManager.single_color(ThemeManager.theme["color"]["frame_low"], self._appearance_mode)
     )
-    self.img.pack(fill=tkinter.BOTH, expand=True)
+    self.img.grid(row=0, column=0)
 
     self.bottom_frame = CTkFrame(master=self)
     self.bottom_frame.grid(row=1, column=0, stick="nswe")
@@ -306,14 +309,11 @@ class VideoPlayer(CTkBaseClass):
         self.dest = None
         im = Image.open(file)
         im.verify()
-        load = Image.open(file)
-        image = ImageTk.PhotoImage(load)
-        self.img.configure(image=image)
-        self.img.image = image
-        load.close()
+        self.img.configure(image=file)
         require_redraw = True
-      except:
+      except UnidentifiedImageError:
         self.dest = file
+        self.img.configure(image=None)
         self.play()
 
     if "width" in kwargs:
@@ -384,6 +384,7 @@ class VideoPlayer(CTkBaseClass):
     self.play_button.configure(image=self.play_pimage)
     self.state = PlayerState.STOPPED
     self.tick.set(0, 1)
+    self.timestamp.configure(text="00:00")
 
   def video_time_changed(self):
     scale = 1 - TICK_WIDTH
