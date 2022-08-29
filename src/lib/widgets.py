@@ -1,19 +1,15 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-import contextlib
 import enum
-from customtkinter import CTkBaseClass, CTkCanvas, CTkFrame, DrawEngine, Settings, ThemeManager
-import cv2
-from ffpyplayer.player import MediaPlayer
-import os
-from PIL import Image, ImageTk
-import queue
+from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, DrawEngine, Settings, ThemeManager
+import pathlib
+from PIL import Image
 import sys
-import tempfile
-import threading
-import time
 import tkinter
 import vlc
+
+HOME = pathlib.Path.home()
+IMAGE_DIR = HOME.joinpath(".img-manager", "images")
 
 class CTkListbox(CTkBaseClass):
   def __init__(self, *args,
@@ -243,15 +239,34 @@ class VideoPlayer(CTkBaseClass):
     )
     self.draw_engine = DrawEngine(self.canvas)
 
+    self.top_frame = CTkFrame(master=self)
+    self.top_frame.grid(row=0, column=0, sticky="nswe")
+
     self.img = tkinter.Label(
-      master=self
+      master=self.top_frame
     )
     self.img.grid(row=0, column=0, sticky="nswe")
 
-    self.condition = None
+    self.bottom_frame = CTkFrame(master=self)
+    self.bottom_frame.grid(row=1, column=0, stick="nswe")
+    self.bottom_frame.grid_columnconfigure(1, weight=1)
+
+    self.play_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("play-icon.png"))
+    self.pause_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("pause-icon.png"))
+    self.play_button = CTkButton(
+      master=self.bottom_frame,
+      command=self.toggle_play,
+      cursor="hand2",
+      image=self.play_pimage,
+      text="",
+      width=28
+    )
+    self.play_button.grid(row=0, column=0, sticky="nswe")
+
+    self.dest = None
     self.player_instance = vlc.Instance()
     self.player: vlc.MediaPlayer = self.player_instance.media_player_new()
-    self.player.set_hwnd(self.winfo_id())
+    self.player.set_hwnd(self.top_frame.winfo_id())
     self.state = PlayerState.STOPPED
     self.verbose = verbose
 
@@ -278,17 +293,32 @@ class VideoPlayer(CTkBaseClass):
 
     super().configure(require_redraw=require_redraw, **kwargs)
 
-  def stop(self):
-    if self.state != PlayerState.PLAYING:
-      return
-
-    self.player.stop()
-    self.state = PlayerState.STOPPED
-
   def play(self):
     if self.dest is None or self.state == PlayerState.PLAYING:
       return
 
     self.state = PlayerState.PLAYING
-    self.player.set_media(self.player_instance.media_new(self.dest))
+
+    if self.state != PlayerState.PAUSED:
+      self.player.set_media(self.player_instance.media_new(self.dest))
+
     self.player.play()
+    self.play_button.configure(image=self.pause_pimage)
+
+  def stop(self):
+    if self.state != PlayerState.PLAYING:
+      return
+
+    self.player.stop()
+    self.play_button.configure(image=self.play_pimage)
+    self.state = PlayerState.STOPPED
+
+  def toggle_play(self):
+    if self.state == PlayerState.PAUSED:
+      self.state = PlayerState.PLAYING
+      self.player.pause()
+      self.play_button.configure(image=self.pause_pimage)
+    else:
+      self.state = PlayerState.PAUSED
+      self.player.pause()
+      self.play_button.configure(image=self.play_pimage)
