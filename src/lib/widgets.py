@@ -1,15 +1,16 @@
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import enum
-from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, DrawEngine, Settings, ThemeManager
+from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, Settings, ThemeManager
 import pathlib
-from PIL import Image
+from PIL import Image, ImageTk
 import sys
 import tkinter
 import vlc
 
 HOME = pathlib.Path.home()
 IMAGE_DIR = HOME.joinpath(".img-manager", "images")
+TICK_WIDTH = 1/50
 
 class CTkListbox(CTkBaseClass):
   def __init__(self, *args,
@@ -243,9 +244,10 @@ class VideoPlayer(CTkBaseClass):
     self.top_frame.grid(row=0, column=0, sticky="nswe")
 
     self.img = tkinter.Label(
-      master=self.top_frame
+      master=self.top_frame,
+      bg=ThemeManager.single_color(ThemeManager.theme["color"]["frame_low"], self._appearance_mode)
     )
-    self.img.grid(row=0, column=0, sticky="nswe")
+    self.img.pack(fill=tkinter.BOTH, expand=True)
 
     self.bottom_frame = CTkFrame(master=self)
     self.bottom_frame.grid(row=1, column=0, stick="nswe")
@@ -263,10 +265,34 @@ class VideoPlayer(CTkBaseClass):
     )
     self.play_button.grid(row=0, column=0, sticky="nswe")
 
-    self.dest = None
+    self.seeker_bg = CTkFrame(
+      master=self.bottom_frame,
+      height=28
+    )
+    self.seeker_bg.grid(row=0, column=1, sticky="nswe", padx=10)
+
+    self.tick = CTkScrollbar(
+      master=self.seeker_bg,
+      orientation="horizontal",
+      command=self.seek
+    )
+    self.tick.pack(fill=tkinter.BOTH, expand=True)
+    self.tick.canvas.bind("<MouseWheel>", None)
+
+    self.timestamp = CTkLabel(
+      master=self.bottom_frame,
+      text="00:00"
+    )
+    self.timestamp.grid(row=0, column=2, sticky="nswe")
+
     self.player_instance = vlc.Instance()
     self.player: vlc.MediaPlayer = self.player_instance.media_player_new()
     self.player.set_hwnd(self.top_frame.winfo_id())
+    e_manager: vlc.EventManager = self.player.event_manager()
+    e_manager.event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda _: self.video_time_changed())
+    e_manager.event_attach(vlc.EventType.MediaPlayerEndReached, lambda _: self.video_end())
+
+    self.dest = None
     self.state = PlayerState.STOPPED
     self.verbose = verbose
 
@@ -277,9 +303,14 @@ class VideoPlayer(CTkBaseClass):
 
       file = kwargs.pop("file")
       try:
+        self.dest = None
         im = Image.open(file)
         im.verify()
-        self.loadImage(kwargs.pop("image"))
+        load = Image.open(file)
+        image = ImageTk.PhotoImage(load)
+        self.img.configure(image=image)
+        self.img.image = image
+        load.close()
         require_redraw = True
       except:
         self.dest = file
@@ -304,21 +335,60 @@ class VideoPlayer(CTkBaseClass):
 
     self.player.play()
     self.play_button.configure(image=self.pause_pimage)
+    self.tick.set(0, TICK_WIDTH)
+
+  def pause(self):
+    if self.state == PlayerState.PLAYING:
+      self.state = PlayerState.PAUSED
+      self.player.pause()
+      self.play_button.configure(image=self.play_pimage)
+
+  def seek(self, _, pos):
+    self.pause()
+    place = pos / (1 - TICK_WIDTH)
+    self.player.set_position(place)
+    self.update_timestamp(place)
 
   def stop(self):
     if self.state != PlayerState.PLAYING:
       return
 
     self.player.stop()
-    self.play_button.configure(image=self.play_pimage)
-    self.state = PlayerState.STOPPED
+    self.video_end()
 
   def toggle_play(self):
     if self.state == PlayerState.PAUSED:
       self.state = PlayerState.PLAYING
       self.player.pause()
       self.play_button.configure(image=self.pause_pimage)
-    else:
-      self.state = PlayerState.PAUSED
-      self.player.pause()
-      self.play_button.configure(image=self.play_pimage)
+    elif self.state == PlayerState.PLAYING:
+      self.pause()
+    elif self.state == PlayerState.STOPPED:
+      self.play()
+
+  def update_timestamp(self, pos: float):
+    video_length = self.player.get_length() / 1000
+    seconds = int(pos * video_length)
+    minutes = seconds // 60
+    hours = minutes // 60
+    seconds %= 60
+
+    text = f"{minutes:02d}:{seconds:02d}"
+
+    if video_length // 3600 > 0:
+      text = f"{hours:02d}:{text}"
+
+    self.timestamp.configure(text=text)
+
+  def video_end(self):
+    self.play_button.configure(image=self.play_pimage)
+    self.state = PlayerState.STOPPED
+    self.tick.set(0, 1)
+
+  def video_time_changed(self):
+    scale = 1 - TICK_WIDTH
+    pos = self.player.get_position()
+    scaled_pos = pos * scale
+    self.tick.set(scaled_pos, scaled_pos + TICK_WIDTH)
+
+    self.update_timestamp(pos)

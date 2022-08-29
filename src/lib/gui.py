@@ -46,6 +46,7 @@ class MainWindow(customtkinter.CTk):
 
     self.__media_widget = widgets.VideoPlayer(master=self.__frame_right, verbose=verbose)
     self.__media_widget.grid(row=0, column=0, sticky="nswe")
+    self.bind("<space>", lambda _: self.__media_widget.toggle_play())
 
     # ===== LOAD DATA =====
     self.load_data()
@@ -59,8 +60,6 @@ class MainWindow(customtkinter.CTk):
       self.__media_widget.configure(file=local_path)
 
   def on_closing(self, event=0):
-    if self.__media_widget.state != widgets.PlayerState.STOPPED:
-      self.__media_widget.stop()
     self.destroy()
 
   def show(self):
