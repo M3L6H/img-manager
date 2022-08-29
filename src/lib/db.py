@@ -81,8 +81,14 @@ class DB:
     self.__connection = DB.connect(path)
     self.__verbose = verbose
 
+    # Create tables in schema
     for table in SCHEMA:
       self.create_table(table, SCHEMA[table])
+
+    # Delete tables not in schema
+    for table in self.__get_tables():
+      if table not in SCHEMA and "sqlite" not in table:
+        self.__drop_table(table)
 
   def create_table(self, name: str, fields: List[Field]):
     name = name.upper()
@@ -190,12 +196,21 @@ class DB:
       res = cursor.execute(query, params)
       if self.__verbose:
         print(f"Executing: {query}")
+
+      data = None
       if fetch == Fetch.ONE:
-        return res.fetchone()
+        data = res.fetchone()
       elif fetch == Fetch.ALL:
-        return res.fetchall()
+        data = res.fetchall()
+
+      cursor.close()
+      return data
     except sqlite3.Error as e:
       print(f"Failed to execute {query} due to {e}")
+
+  def __get_tables(self) -> List[str]:
+    res = self.__execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
+    return [entry[0] for entry in res]
 
   def __query(self, table: str, fetch: Fetch, id: int = None, **kwargs) -> any:
     table = table.upper()
@@ -214,6 +229,7 @@ class DB:
 
   def __quote(self, val: any) -> any:
     if isinstance(val, str):
+      val = val.replace("'", "''")
       return f"'{val}'"
 
     return val
@@ -230,7 +246,7 @@ def model(my_class):
   global SCHEMA
   fields = [Field("id", primarykey=True)]
   params = inspect.signature(my_class.__init__).parameters
-  table = my_class.__name__
+  table: str = my_class.__name__.upper()
 
   for p in params:
     if p == "self":

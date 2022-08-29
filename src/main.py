@@ -88,11 +88,6 @@ def main(args: List[str]) -> None:
     mw = gui.MainWindow(my_db, verbose=verbose)
     mw.show()
 
-  # image: Image = Image.create(my_db, local_path = "/test")
-  # print(image)
-  # print(Image.find_by_id(my_db, 1))
-  # print(Image.find_all(my_db))
-
   my_db.disconnect()
 
 if __name__ == "__main__":
