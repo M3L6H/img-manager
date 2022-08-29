@@ -79,12 +79,12 @@ class DB:
 
   @staticmethod
   def copy(db):
-    return DB(db.path)
+    return DB(db.path, db.verbose)
 
   def __init__(self, path: str, verbose: bool = False):
     self.path = path
     self.__connection = DB.connect(path)
-    self.__verbose = verbose
+    self.verbose = verbose
 
   def count(self, table: str) -> int:
     return self.__execute(f"SELECT COUNT(1) FROM {table}", Fetch.ONE)[0]
@@ -139,7 +139,7 @@ class DB:
     self.__connection.commit()
 
   def disconnect(self):
-    if self.__verbose:
+    if self.verbose:
       print("Disconnecting from db")
     self.__connection.close()
 
@@ -186,12 +186,12 @@ class DB:
         self.__drop_table(table)
 
   def __copy_data(self, from_table: str, to_table: str) -> None:
-    if self.__verbose:
+    if self.verbose:
       print(f"Copying data from table {from_table} to {to_table}")
     self.__execute(f"INSERT INTO {to_table} SELECT * FROM {from_table};")
 
   def __drop_table(self, table: str) -> None:
-    if self.__verbose:
+    if self.verbose:
       print(f"Dropping {table}")
     self.__execute(f"DROP TABLE IF EXISTS {table};")
 
@@ -203,7 +203,7 @@ class DB:
 
     try:
       res = cursor.execute(query, params)
-      if self.__verbose:
+      if self.verbose:
         print(f"Executing: {query}")
 
       data = None
@@ -248,7 +248,7 @@ class DB:
     return val
 
   def __rename_table(self, old_name: str, new_name: str):
-    if self.__verbose:
+    if self.verbose:
       print(f"Renaming table {old_name} to {new_name}")
     self.__execute(f"ALTER TABLE {old_name} RENAME TO {new_name};")
 
