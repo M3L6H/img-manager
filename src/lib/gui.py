@@ -60,8 +60,6 @@ class MainWindow(customtkinter.CTk):
       self.__media_widget.configure(file=local_path)
 
   def on_closing(self, event=0):
-    # if self.__media_widget.state != widgets.PlayerState.STOPPED:
-    #   self.__media_widget.stop()
     self.destroy()
 
   def show(self):
