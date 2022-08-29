@@ -5,7 +5,12 @@ import tkinter
 
 import db
 import models
+import pathlib
+import threading
 import widgets
+
+HOME = pathlib.Path.home()
+IMAGE_DIR = HOME.joinpath(".img-manager", "images")
 
 customtkinter.set_appearance_mode("dark")
 
@@ -19,6 +24,17 @@ class MainWindow(customtkinter.CTk):
     self.state("zoomed")
     self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
 
+    # ===== INITIALIZE MEMBERS =====
+    self.__entries_per_page = 75
+    self.__max_page = None
+    self.__page = 0
+
+    # ===== CREATE THREADS =====
+    self.t_max_page = threading.Thread(target=self.fetch_max_page)
+
+    # ===== RUN THREADS
+    self.t_max_page.start()
+
     # ===== CREATE FRAMES =====
 
     # Configure grid layout (2x2)
@@ -28,6 +44,8 @@ class MainWindow(customtkinter.CTk):
     self.grid_rowconfigure(1, weight=1)
 
     self.__frame_left = customtkinter.CTkFrame(master=self, width=500, corner_radius=0)
+    self.__frame_left.rowconfigure(0, weight=1)
+    self.__frame_left.columnconfigure(0, weight=1)
     self.__frame_left.grid(row=0, column=0, rowspan=2, sticky="nswe")
 
     self.__frame_right = customtkinter.CTkFrame(master=self)
@@ -40,6 +58,54 @@ class MainWindow(customtkinter.CTk):
     self.__list_widget = widgets.CTkListbox(master=self.__frame_left, command=lambda x: self.load_media(x))
     self.__list_widget.grid(row=0, column=0, sticky="nswe")
 
+    self.__pagination = customtkinter.CTkFrame(
+      master=self.__frame_left,
+      corner_radius=0
+    )
+    self.__pagination.grid(row=1, column=0, sticky="nwe")
+
+    self.__first_page = customtkinter.CTkButton(
+      master=self.__pagination,
+      text=None,
+      image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("first-page-icon.png")),
+      width=28,
+      command=lambda : threading.Thread(target=self.first_page).start()
+    )
+    self.__first_page.grid(row=0, column=0)
+
+    self.__prev_page = customtkinter.CTkButton(
+      master=self.__pagination,
+      text=None,
+      image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("arrow-back-icon.png")),
+      width=28,
+      command=lambda : threading.Thread(target=self.prev_page).start()
+    )
+    self.__prev_page.grid(row=0, column=1)
+
+    self.__page_entry = customtkinter.CTkEntry(
+      master=self.__pagination,
+      text=str(self.__page)
+    )
+    self.__page_entry.grid(row=0, column=2)
+
+    self.__next_page = customtkinter.CTkButton(
+      master=self.__pagination,
+      text=None,
+      image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("arrow-forward-icon.png")),
+      width=28,
+      command=lambda : threading.Thread(target=self.next_page).start()
+    )
+    self.__next_page.grid(row=0, column=3)
+
+    self.__last_page = customtkinter.CTkButton(
+      master=self.__pagination,
+      text=None,
+      image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("last-page-icon.png")),
+      width=28,
+      command=lambda : threading.Thread(target=self.last_page).start()
+    )
+    self.__last_page.grid(row=0, column=4)
+
     # ===== RIGHT FRAME =====
     self.__frame_right.grid_columnconfigure(0, weight=1)
     self.__frame_right.grid_rowconfigure(0, weight=1)
@@ -51,16 +117,71 @@ class MainWindow(customtkinter.CTk):
     # ===== LOAD DATA =====
     self.load_data()
 
+  def disable_pagination(self):
+    self.__first_page.configure(state=tkinter.DISABLED)
+    self.__last_page.configure(state=tkinter.DISABLED)
+    self.__next_page.configure(state=tkinter.DISABLED)
+    self.__prev_page.configure(state=tkinter.DISABLED)
+    self.__page_entry.configure(state=tkinter.DISABLED)
+
+  def enable_pagination(self):
+    self.__first_page.configure(state=tkinter.NORMAL)
+    self.__last_page.configure(state=tkinter.NORMAL)
+    self.__next_page.configure(state=tkinter.NORMAL)
+    self.__prev_page.configure(state=tkinter.NORMAL)
+    self.__page_entry.configure(state=tkinter.NORMAL)
+
+  def fetch_max_page(self):
+    self.__max_page: int = models.Image.count(db.DB.copy(self.__my_db)) // self.__entries_per_page
+
+  def first_page(self):
+    self.disable_pagination()
+    self.__page = 0
+    self.load_data()
+    self.__page_entry.configure(text=str(self.__page))
+    self.enable_pagination()
+
+  def last_page(self):
+    self.disable_pagination()
+    self.__page = self.max_page()
+    self.load_data()
+    self.__page_entry.configure(text=str(self.__page))
+    self.enable_pagination()
+
   def load_data(self):
-    images: List[models.Image] = models.Image.find_all(self.__my_db, local_path="*")
+    images: List[models.Image] = models.Image.find_all(
+      db.DB.copy(self.__my_db),
+      limit=self.__entries_per_page,
+      offset=self.__page * self.__entries_per_page,
+      local_path="*"
+    )
     self.__list_widget.configure(values=[img.local_path for img in images])
 
   def load_media(self, local_path: str=None):
     if local_path:
       self.__media_widget.configure(file=local_path)
 
+  def max_page(self) -> int:
+    if self.__max_page == None:
+      self.t_max_page.join()
+    return self.__max_page
+
+  def next_page(self):
+    self.disable_pagination()
+    self.__page = min(self.__page + 1, self.max_page())
+    self.load_data()
+    self.__page_entry.configure(text=str(self.__page))
+    self.enable_pagination()
+
   def on_closing(self, event=0):
     self.destroy()
+
+  def prev_page(self):
+    self.disable_pagination()
+    self.__page = max(self.__page - 1, 0)
+    self.load_data()
+    self.__page_entry.configure(text=str(self.__page))
+    self.enable_pagination()
 
   def show(self):
     self.mainloop()

@@ -77,18 +77,17 @@ class DB:
 
     return connection
 
+  @staticmethod
+  def copy(db):
+    return DB(db.path, db.verbose)
+
   def __init__(self, path: str, verbose: bool = False):
+    self.path = path
     self.__connection = DB.connect(path)
-    self.__verbose = verbose
+    self.verbose = verbose
 
-    # Create tables in schema
-    for table in SCHEMA:
-      self.create_table(table, SCHEMA[table])
-
-    # Delete tables not in schema
-    for table in self.__get_tables():
-      if table not in SCHEMA and "sqlite" not in table:
-        self.__drop_table(table)
+  def count(self, table: str) -> int:
+    return self.__execute(f"SELECT COUNT(1) FROM {table}", Fetch.ONE)[0]
 
   def create_table(self, name: str, fields: List[Field]):
     name = name.upper()
@@ -140,7 +139,7 @@ class DB:
     self.__connection.commit()
 
   def disconnect(self):
-    if self.__verbose:
+    if self.verbose:
       print("Disconnecting from db")
     self.__connection.close()
 
@@ -173,16 +172,26 @@ class DB:
   def query_one(self, table: str, id: int = None, **kwargs):
     return self.__query(table, Fetch.ONE, id, **kwargs)
 
-  def query_all(self, table: str, id: int = None, **kwargs):
-    return self.__query(table, Fetch.ALL, id, **kwargs)
+  def query_all(self, table: str, limit: int=50, offset: int=0, **kwargs):
+    return self.__query(table, Fetch.ALL, None, limit, offset, **kwargs)
+
+  def update_schema(self):
+    # Create tables in schema
+    for table in SCHEMA:
+      self.create_table(table, SCHEMA[table])
+
+    # Delete tables not in schema
+    for table in self.__get_tables():
+      if table not in SCHEMA and "sqlite" not in table:
+        self.__drop_table(table)
 
   def __copy_data(self, from_table: str, to_table: str) -> None:
-    if self.__verbose:
+    if self.verbose:
       print(f"Copying data from table {from_table} to {to_table}")
     self.__execute(f"INSERT INTO {to_table} SELECT * FROM {from_table};")
 
   def __drop_table(self, table: str) -> None:
-    if self.__verbose:
+    if self.verbose:
       print(f"Dropping {table}")
     self.__execute(f"DROP TABLE IF EXISTS {table};")
 
@@ -194,7 +203,7 @@ class DB:
 
     try:
       res = cursor.execute(query, params)
-      if self.__verbose:
+      if self.verbose:
         print(f"Executing: {query}")
 
       data = None
@@ -212,7 +221,7 @@ class DB:
     res = self.__execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
     return [entry[0] for entry in res]
 
-  def __query(self, table: str, fetch: Fetch, id: int = None, **kwargs) -> any:
+  def __query(self, table: str, fetch: Fetch, id: int=None, limit: int=None, offset: int=None, **kwargs) -> any:
     table = table.upper()
     if id:
       return self.__execute(f"SELECT * FROM {table} WHERE id=?", fetch, (id,))
@@ -223,6 +232,10 @@ class DB:
           query += f" {k}=?"
         else:
           query += f" {k} IS NOT NULL AND {k}!=?"
+      if limit:
+        query += f" LIMIT {limit}"
+      if offset:
+        query += f" OFFSET {offset}"
       return self.__execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
 
     return self.__execute(f"SELECT * FROM {table}", fetch)
@@ -235,7 +248,7 @@ class DB:
     return val
 
   def __rename_table(self, old_name: str, new_name: str):
-    if self.__verbose:
+    if self.verbose:
       print(f"Renaming table {old_name} to {new_name}")
     self.__execute(f"ALTER TABLE {old_name} RENAME TO {new_name};")
 
@@ -270,6 +283,14 @@ def model(my_class):
     return [my_class(*entry[1:]) for entry in res]
 
   my_class.all = all
+
+  def count(db: DB) -> int:
+    res = db.count(table)
+    if res:
+      return res
+    return 0
+
+  my_class.count = count
 
   create_str = """
 def create(my_class, db, {params}):

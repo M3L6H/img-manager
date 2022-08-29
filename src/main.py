@@ -80,6 +80,7 @@ def main(args: List[str]) -> None:
 
   # Connect to db
   my_db = db.DB(ns.db, verbose)
+  my_db.update_schema()
 
   # Run operation
   if ns.add:

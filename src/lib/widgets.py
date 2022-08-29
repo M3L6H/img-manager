@@ -53,7 +53,7 @@ class CTkListbox(CTkBaseClass):
 
     self.command = command
     self.selected = selected
-    self.labels: Dict[str, Tuple[bool, tkinter.Label]] = {}
+    self.labels: Dict[str, List] = {}
     self.values = values
     self.state = state
 
@@ -66,8 +66,20 @@ class CTkListbox(CTkBaseClass):
     )
     self.draw_engine = DrawEngine(self.canvas)
 
+    # configure
+    self.rowconfigure(0, weight=1)
+    self.columnconfigure(0, weight=1)
+
+    # inner frame
+    self.__container = CTkFrame(
+      master=self,
+      corner_radius=0
+    )
+    self.__container.grid(row=0, column=0, padx=10, sticky="nswe")
+    self.__container.pack_propagate(0)
+
     # initial draw
-    self.configure(cursor=self.get_cursor())
+    self.configure(cursor="arrow")
     self.draw()
 
   def draw(self, no_color_updates=False):
@@ -113,13 +125,15 @@ class CTkListbox(CTkBaseClass):
         self.labels[value][0] = True
         self.labels[value][1].configure(text=value)
       else:
-        self.labels[value] = (True, tkinter.Label(
-          master=self,
+        self.labels[value] = [True, tkinter.Label(
+          master=self.__container,
           font=self.apply_font_scaling(self.text_font),
           text=value,
           activebackground=ThemeManager.single_color(self.active_color, self._appearance_mode),
-          justify=tkinter.LEFT
-        ))
+          justify=tkinter.RIGHT,
+          anchor="e",
+          cursor="hand2"
+        )]
 
       self.labels[value][1].bind("<Button-1>", lambda e,value=value: self.clicked(value, e))
 
@@ -136,17 +150,12 @@ class CTkListbox(CTkBaseClass):
         else:
           self.labels[value][1].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
 
-      self.labels[value][1].grid(
-        row=row,
-        column=0,
-        pady=(self.apply_widget_scaling(self.border_width), self.apply_widget_scaling(self.border_width) + 1),
-        sticky="w"
-      )
+      self.labels[value][1].pack(fill=tkinter.BOTH)
 
       row += 1
 
     # Delete the labels of values which are no longer present
-    for k in self.labels:
+    for k in list(self.labels):
       if not self.labels[k][0]:
         if self.selected == k:
           self.selected = None
@@ -187,21 +196,6 @@ class CTkListbox(CTkBaseClass):
       self.set_dimensions(height=kwargs.pop("height"))
 
     super().configure(require_redraw=require_redraw, **kwargs)
-
-  def get_cursor(self) -> Optional[str]:
-    if Settings.cursor_manipulation_enabled:
-      if self.state == tkinter.DISABLED:
-        if sys.platform == "darwin" and self.command is not None and Settings.cursor_manipulation_enabled:
-          return "arrow"
-        elif sys.platform.startswith("win") and self.command is not None and Settings.cursor_manipulation_enabled:
-          return "arrow"
-
-      elif self.state == tkinter.NORMAL:
-        if sys.platform == "darwin" and self.command is not None and Settings.cursor_manipulation_enabled:
-          return "pointinghand"
-        elif sys.platform.startswith("win") and self.command is not None and Settings.cursor_manipulation_enabled:
-          return "hand2"
-
 
   def clicked(self, value: str, event=None):
     if self.command:
