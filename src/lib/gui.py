@@ -31,6 +31,7 @@ class MainWindow(customtkinter.CTk):
     self.__page = 0
     self.__page_var = tkinter.StringVar()
     self.update_page_var()
+    self.__verbose = verbose
 
     # ===== CREATE THREADS =====
     self.t_max_page = threading.Thread(target=self.fetch_max_page)
@@ -147,7 +148,10 @@ class MainWindow(customtkinter.CTk):
     self.__page_entry.configure(state=tkinter.NORMAL)
 
   def fetch_max_page(self):
-    self.__max_page: int = models.Image.count(db.DB.copy(self.__my_db)) // self.__entries_per_page
+    count: int = models.Image.count(db.DB.copy(self.__my_db))
+    if self.__verbose:
+      print(f"Loaded {count} files")
+    self.__max_page = count // self.__entries_per_page
 
   def finalize_page_change(self):
     self.update_page_var()
