@@ -45,6 +45,7 @@ class CanvasImage:
                 xscrollcommand=hbar.set, yscrollcommand=vbar.set)
     self.canvas.grid(row=0, column=0, sticky='nswe')
     self.canvas.update()  # wait till canvas is created
+    self.canvas.configure(cursor="arrow")
     hbar.configure(command=self.__scroll_x)  # bind scrollbars to the canvas
     vbar.configure(command=self.__scroll_y)
     # Bind events to the Canvas
@@ -62,6 +63,7 @@ class CanvasImage:
 
       if path is None:
         self.canvas.delete("all")
+        self.canvas.configure(cursor="arrow")
         self.__close()
       else:
         # Decide if this image huge or not
@@ -99,6 +101,7 @@ class CanvasImage:
         self.container = self.canvas.create_rectangle((0, 0, self.imwidth * self.imscale, self.imheight * self.imscale), width=0)
         self.__show_image()  # show image on the canvas
         self.canvas.focus_set()  # set focus on the canvas
+        self.canvas.configure(cursor="fleur")
         self.canvas.bind('<Configure>', lambda event: self.__show_image())  # canvas is resized
 
     if "bg" in kwargs:
