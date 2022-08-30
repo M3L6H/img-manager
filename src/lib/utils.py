@@ -2,6 +2,7 @@ from typing import List, Set
 
 import pathlib
 import os
+from tqdm import tqdm
 
 import db
 import models
@@ -14,7 +15,7 @@ def add(my_db: db.DB, to_add: str) -> None:
   if os.path.isdir(to_add):
     total = 0
     registered = 0
-    for img in search_dir(to_add, SUPPORTED_MEDIA):
+    for img in tqdm(search_dir(to_add, SUPPORTED_MEDIA)):
       total += 1
       if not models.Image.find_one(my_db, local_path=str(img)):
         registered += 1
@@ -25,4 +26,4 @@ def add(my_db: db.DB, to_add: str) -> None:
     print(f"Registered {to_add}")
 
 def search_dir(dir: pathlib.Path, suffixes: Set[str]) -> List[pathlib.Path]:
-  return (p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes)
+  return [p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes]
