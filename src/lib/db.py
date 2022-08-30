@@ -1,5 +1,6 @@
 from typing import Dict, Generic, List, Optional, Tuple, TypeVar
 
+import datetime
 import enum
 import inspect
 import re
@@ -62,16 +63,17 @@ TYPE_MAP = {
   "int": Type.INTEGER,
   "float": Type.FLOAT,
   "bool": Type.BOOLEAN,
-  "date": Type.TIMESTAMP
+  "datetime": Type.TIMESTAMP
 }
 
 class DB:
   @staticmethod
-  def connect(path: str) -> sqlite3.Connection:
+  def connect(path: str, verbose=False) -> sqlite3.Connection:
     connection = None
     try:
       connection = sqlite3.connect(path)
-      print(f"Successfully connected to {path}")
+      if verbose:
+        print(f"Successfully connected to {path}")
     except sqlite3.Error as e:
       print(f"Failed to connect to {path} due to {e}")
 
@@ -83,7 +85,7 @@ class DB:
 
   def __init__(self, path: str, verbose: bool = False):
     self.path = path
-    self.__connection = DB.connect(path)
+    self.__connection = DB.connect(path, verbose)
     self.verbose = verbose
 
   def count(self, table: str) -> int:
@@ -245,6 +247,9 @@ class DB:
       val = val.replace("'", "''")
       return f"'{val}'"
 
+    if isinstance(val, datetime.datetime):
+      return f"'{str(val)}'"
+
     return val
 
   def __rename_table(self, old_name: str, new_name: str):
@@ -272,12 +277,6 @@ def model(my_class):
 
   SCHEMA[table] = fields
 
-  param_values = params.values()
-
-  arg_str = ", ".join([p.name for p in param_values if p.name != "self"])
-  data_str = "{" + ",".join([f"\"{p.name}\": {p.name}" for p in param_values if p.name != "self"]) + "}"
-  param_str = ", ".join([str(p) for p in param_values if p.name != "self"])
-
   def all(db: DB) -> List[my_class]:
     res = db.query_all(table)
     return [my_class(*entry[1:]) for entry in res]
@@ -292,11 +291,17 @@ def model(my_class):
 
   my_class.count = count
 
+  param_values = params.values()
+
+  arg_str = ", ".join([p.name for p in param_values if p.name != "self"])
+  param_str = ", ".join([str(p) for p in param_values if p.name != "self"])
+
   create_str = """
 def create(my_class, db, {params}):
-  db.insert("{table}", {data})
-  return my_class({args})
-  """.format(args = arg_str, data = data_str, params = param_str, table = table)
+  new_instance = my_class({args})
+  db.insert("{table}", new_instance.__dict__)
+  return new_instance
+  """.format(args = arg_str, params = param_str, table = table)
   exec(create_str)
   my_class.create = classwrapper(my_class, locals()["create"])
 
