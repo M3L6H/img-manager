@@ -6,6 +6,7 @@ import tkinter
 import db
 import models
 import pathlib
+import re
 import threading
 import widgets
 
@@ -28,6 +29,8 @@ class MainWindow(customtkinter.CTk):
     self.__entries_per_page = 75
     self.__max_page = None
     self.__page = 0
+    self.__page_var = tkinter.StringVar()
+    self.update_page_var()
 
     # ===== CREATE THREADS =====
     self.t_max_page = threading.Thread(target=self.fetch_max_page)
@@ -44,8 +47,8 @@ class MainWindow(customtkinter.CTk):
     self.grid_rowconfigure(1, weight=1)
 
     self.__frame_left = customtkinter.CTkFrame(master=self, width=500, corner_radius=0)
-    self.__frame_left.rowconfigure(0, weight=1)
-    self.__frame_left.columnconfigure(0, weight=1)
+    self.__frame_left.grid_rowconfigure(0, weight=1)
+    self.__frame_left.grid_columnconfigure(0, weight=1)
     self.__frame_left.grid(row=0, column=0, rowspan=2, sticky="nswe")
 
     self.__frame_right = customtkinter.CTkFrame(master=self)
@@ -62,31 +65,41 @@ class MainWindow(customtkinter.CTk):
       master=self.__frame_left,
       corner_radius=0
     )
-    self.__pagination.grid(row=1, column=0, sticky="nwe")
+    self.__pagination.grid(row=1, column=0, sticky="nswe")
+    self.__pagination.grid_rowconfigure(0, weight=1)
+    self.__pagination.grid_columnconfigure(0, weight=1)
+    self.__pagination.grid_columnconfigure(6, weight=1)
 
     self.__first_page = customtkinter.CTkButton(
       master=self.__pagination,
       text=None,
       image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("first-page-icon.png")),
       width=28,
-      command=lambda : threading.Thread(target=self.first_page).start()
+      command=lambda : threading.Thread(target=self.first_page).start(),
+      state=tkinter.DISABLED
     )
-    self.__first_page.grid(row=0, column=0)
+    self.__first_page.grid(row=0, column=1)
 
     self.__prev_page = customtkinter.CTkButton(
       master=self.__pagination,
       text=None,
       image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("arrow-back-icon.png")),
       width=28,
-      command=lambda : threading.Thread(target=self.prev_page).start()
+      command=lambda : threading.Thread(target=self.prev_page).start(),
+      state=tkinter.DISABLED
     )
-    self.__prev_page.grid(row=0, column=1)
+    self.__prev_page.grid(row=0, column=2)
 
     self.__page_entry = customtkinter.CTkEntry(
       master=self.__pagination,
-      text=str(self.__page)
+      textvariable=self.__page_var,
+      justify=tkinter.CENTER,
+      validate=tkinter.ALL,
+      validatecommand=(self.register(self.validate_page_entry), "%P")
     )
-    self.__page_entry.grid(row=0, column=2)
+    self.__page_entry.grid(row=0, column=3, padx=10)
+    self.__page_entry.bind("<FocusOut>", lambda _: self.update_page_var())
+    self.__page_entry.bind("<Return>", lambda _: threading.Thread(target=self.go_to_page).start())
 
     self.__next_page = customtkinter.CTkButton(
       master=self.__pagination,
@@ -95,7 +108,7 @@ class MainWindow(customtkinter.CTk):
       width=28,
       command=lambda : threading.Thread(target=self.next_page).start()
     )
-    self.__next_page.grid(row=0, column=3)
+    self.__next_page.grid(row=0, column=4)
 
     self.__last_page = customtkinter.CTkButton(
       master=self.__pagination,
@@ -104,7 +117,7 @@ class MainWindow(customtkinter.CTk):
       width=28,
       command=lambda : threading.Thread(target=self.last_page).start()
     )
-    self.__last_page.grid(row=0, column=4)
+    self.__last_page.grid(row=0, column=5)
 
     # ===== RIGHT FRAME =====
     self.__frame_right.grid_columnconfigure(0, weight=1)
@@ -125,28 +138,44 @@ class MainWindow(customtkinter.CTk):
     self.__page_entry.configure(state=tkinter.DISABLED)
 
   def enable_pagination(self):
-    self.__first_page.configure(state=tkinter.NORMAL)
-    self.__last_page.configure(state=tkinter.NORMAL)
-    self.__next_page.configure(state=tkinter.NORMAL)
-    self.__prev_page.configure(state=tkinter.NORMAL)
+    if self.__page != 0:
+      self.__first_page.configure(state=tkinter.NORMAL)
+      self.__prev_page.configure(state=tkinter.NORMAL)
+    if self.__page != self.max_page():
+      self.__last_page.configure(state=tkinter.NORMAL)
+      self.__next_page.configure(state=tkinter.NORMAL)
     self.__page_entry.configure(state=tkinter.NORMAL)
 
   def fetch_max_page(self):
     self.__max_page: int = models.Image.count(db.DB.copy(self.__my_db)) // self.__entries_per_page
 
+  def finalize_page_change(self):
+    self.update_page_var()
+    self.load_data()
+    self.enable_pagination()
+
   def first_page(self):
     self.disable_pagination()
     self.__page = 0
-    self.load_data()
-    self.__page_entry.configure(text=str(self.__page))
-    self.enable_pagination()
+    self.finalize_page_change()
+
+  def go_to_page(self):
+    text = self.__page_entry.get()
+    if len(text) == 0:
+      self.focus()
+      self.update_page_var()
+      return
+    page = max(min(int(text) - 1, self.max_page()), 0)
+    if page != self.__page:
+      self.disable_pagination()
+      self.__page = page
+      self.focus()
+      self.finalize_page_change()
 
   def last_page(self):
     self.disable_pagination()
     self.__page = self.max_page()
-    self.load_data()
-    self.__page_entry.configure(text=str(self.__page))
-    self.enable_pagination()
+    self.finalize_page_change()
 
   def load_data(self):
     images: List[models.Image] = models.Image.find_all(
@@ -169,9 +198,7 @@ class MainWindow(customtkinter.CTk):
   def next_page(self):
     self.disable_pagination()
     self.__page = min(self.__page + 1, self.max_page())
-    self.load_data()
-    self.__page_entry.configure(text=str(self.__page))
-    self.enable_pagination()
+    self.finalize_page_change()
 
   def on_closing(self, event=0):
     self.destroy()
@@ -179,9 +206,15 @@ class MainWindow(customtkinter.CTk):
   def prev_page(self):
     self.disable_pagination()
     self.__page = max(self.__page - 1, 0)
-    self.load_data()
-    self.__page_entry.configure(text=str(self.__page))
-    self.enable_pagination()
+    self.finalize_page_change()
 
   def show(self):
     self.mainloop()
+
+  def update_page_var(self):
+    self.__page_var.set(str(self.__page + 1))
+
+  def validate_page_entry(self, value):
+    if re.match(r"^\d*$", value) is None:
+      return False
+    return True
