@@ -67,8 +67,8 @@ class CTkListbox(CTkBaseClass):
     self.draw_engine = DrawEngine(self.canvas)
 
     # configure
-    self.rowconfigure(0, weight=1)
-    self.columnconfigure(0, weight=1)
+    self.grid_rowconfigure(0, weight=1)
+    self.grid_columnconfigure(0, weight=1)
 
     # inner frame
     self.__container = CTkFrame(
@@ -236,8 +236,8 @@ class VideoPlayer(CTkBaseClass):
     self.draw_engine = DrawEngine(self.canvas)
 
     self.top_frame = CTkFrame(master=self)
-    self.top_frame.rowconfigure(0, weight=1)
-    self.top_frame.columnconfigure(0, weight=1)
+    self.top_frame.grid_rowconfigure(0, weight=1)
+    self.top_frame.grid_columnconfigure(0, weight=1)
     self.top_frame.grid(row=0, column=0, sticky="nswe")
 
     self.img = CanvasImage(
