@@ -1,4 +1,4 @@
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Dict, ForwardRef, Generic, List, Optional, Tuple, TypeVar
 
 import datetime
 import enum
@@ -19,12 +19,12 @@ class Type(enum.Enum):
   TIMESTAMP = 4
 
 class Field:
-  def __init__(self, name: str, field_type: Type = Type.INTEGER, nonnull: bool = False, references: str = "", primarykey: bool = False):
+  def __init__(self, name: str, field_type: Type=Type.INTEGER, nonnull: bool=False, references: str=None, primarykey: bool = False):
     if not re.match(r"[_a-z]+", name):
       raise ValueError(f"Invalid name {name}")
 
-    if len(references) > 0 and not re.match(r"[_a-z]+ \([_a-z]+\)", str):
-      raise ValueError(f"Expected references with format 'table (field)', got {references}")
+    if references is not None and not re.match(r"[_A-Z]+ \([_a-z]+\)", references):
+      raise ValueError(f"Expected references with format 'TABLE (field)', got {references}")
 
     self.__name = name
     self.__type = field_type
@@ -33,7 +33,7 @@ class Field:
     self.__references = references
 
   def get_reference(self) -> str:
-    if len(self.__references) == 0: return ""
+    if self.__references is None: return ""
 
     return f"FOREIGN KEY ({self.__name}) REFERENCES {self.__references}"
 
@@ -83,6 +83,17 @@ class DB:
   def copy(db):
     return DB(db.path, db.verbose)
 
+  @staticmethod
+  def quote(val: any) -> any:
+    if isinstance(val, str):
+      val = val.replace("'", "''")
+      return f"'{val}'"
+
+    if isinstance(val, datetime.datetime):
+      return f"'{str(val)}'"
+
+    return val
+
   def __init__(self, path: str, verbose: bool = False):
     self.path = path
     self.__connection = DB.connect(path, verbose)
@@ -106,7 +117,7 @@ class DB:
 
     query = f"CREATE TABLE {name} (\n"
     pkey = False
-    references = " ".join(filter(lambda x: len(x) > 0, [f.get_reference() for f in fields]))
+    references = ",\n".join(filter(lambda x: len(x) > 0, [f.get_reference() for f in fields]))
     for i in range(len(fields)):
       field = fields[i]
 
@@ -153,15 +164,15 @@ class DB:
       if isinstance(v, list):
         if len(entries) > 0:
           for i in range(len(v)):
-            entries[i].append(self.__quote(v[i]))
+            entries[i].append(DB.quote(v[i]))
         else:
           for val in v:
-            entries.append([self.__quote(val)])
+            entries.append([DB.quote(val)])
       else:
         if len(entries) > 0:
-          entries[0].append(self.__quote(v))
+          entries[0].append(DB.quote(v))
         else:
-          entries.append([self.__quote(v)])
+          entries.append([DB.quote(v)])
 
     for i in range(len(entries)):
       entries[i] = "(" + ",".join(entries[i]) + ")"
@@ -242,16 +253,6 @@ class DB:
 
     return self.__execute(f"SELECT * FROM {table}", fetch)
 
-  def __quote(self, val: any) -> any:
-    if isinstance(val, str):
-      val = val.replace("'", "''")
-      return f"'{val}'"
-
-    if isinstance(val, datetime.datetime):
-      return f"'{str(val)}'"
-
-    return val
-
   def __rename_table(self, old_name: str, new_name: str):
     if self.verbose:
       print(f"Renaming table {old_name} to {new_name}")
@@ -271,8 +272,18 @@ def model(my_class):
       continue
     param = params[p]
     annotation = param.annotation
-    field_type = Type.INTEGER if re.match(r"__main__\.ForeignKey\[.*\]", str(annotation)) else TYPE_MAP[annotation.__name__]
-    ref = annotation.__args__[0].__name__ if re.match(r"__main__\.ForeignKey\[.*\]", str(annotation)) else ""
+    field_type = Type.INTEGER if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)) else TYPE_MAP[annotation.__name__]
+    ref = None
+    if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)):
+      ref = annotation.__args__[0]
+
+      if isinstance(ref, ForwardRef):
+        ref = ref.__forward_arg__
+      else:
+        ref = ref.__name__
+
+      ref = f"{ref.upper()} (id)"
+
     fields.append(Field(param.name, field_type, param.default == inspect.Parameter.empty, ref))
 
   SCHEMA[table] = fields
@@ -294,7 +305,7 @@ def model(my_class):
   param_values = params.values()
 
   arg_str = ", ".join([p.name for p in param_values if p.name != "self"])
-  param_str = ", ".join([str(p) for p in param_values if p.name != "self"])
+  param_str = ", ".join([p.name if p.default == inspect.Parameter.empty else f"{p.name}={DB.quote(p.default)}" for p in param_values if p.name != "self"])
 
   create_str = """
 def create(my_class, db, {params}):
