@@ -11,7 +11,9 @@ import threading
 import widgets
 
 HOME = pathlib.Path.home()
-IMAGE_DIR = HOME.joinpath(".img-manager", "images")
+DATA_DIR = HOME.joinpath(".img-manager")
+IMAGE_DIR = DATA_DIR.joinpath("images")
+VERSION_FILE = DATA_DIR.joinpath("version")
 
 customtkinter.set_appearance_mode("dark")
 
@@ -21,7 +23,10 @@ class MainWindow(customtkinter.CTk):
 
     self.__my_db = my_db
 
-    self.title("img-manager")
+    with open(VERSION_FILE, "r") as f:
+      version = f.read().strip()
+
+    self.title(f"img-manager {version}")
     self.state("zoomed")
     self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
 

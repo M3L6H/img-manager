@@ -116,7 +116,7 @@ class CTkListbox(CTkBaseClass):
 
     for i, value in enumerate(self.values):
       if i < len(self.labels):
-        self.labels[i].configure(text=value)
+        self.labels[i].configure(text=value, cursor="hand2", state=tkinter.NORMAL)
       else:
         self.labels.append(tkinter.Label(
           master=self.__container,
@@ -128,7 +128,7 @@ class CTkListbox(CTkBaseClass):
           cursor="hand2"
         ))
 
-      self.labels[i].bind("<Button-1>", lambda e,value=value: self.clicked(value, e))
+      self.labels[i].bind("<Button-1>", lambda _,i=i: self.clicked(i))
 
       if no_color_updates is False:
         self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
@@ -153,6 +153,7 @@ class CTkListbox(CTkBaseClass):
   def configure(self, require_redraw=False, **kwargs):
     if "values" in kwargs:
       self.values = kwargs.pop("values")
+      self.selected = None
       require_redraw = True
 
     if "state" in kwargs:
@@ -185,16 +186,17 @@ class CTkListbox(CTkBaseClass):
 
     super().configure(require_redraw=require_redraw, **kwargs)
 
-  def clicked(self, value: str, event=None):
+  def clicked(self, i: int):
+    value = self.values[i]
     if self.command:
-      if self.state != tkinter.DISABLED and self.selected != value:
-        label = self.labels[value][1]
-        label.configure(state=tkinter.ACTIVE)
+      if self.state != tkinter.DISABLED and self.selected != i:
+        label = self.labels[i]
+        label.configure(state=tkinter.ACTIVE, cursor="arrow")
 
         if self.selected:
-          self.labels[self.selected][1].configure(state=tkinter.NORMAL)
+          self.labels[self.selected].configure(state=tkinter.NORMAL, cursor="hand2")
 
-        self.selected = value
+        self.selected = i
         self.command(value)
 
 class PlayerState(enum.Enum):
