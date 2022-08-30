@@ -53,7 +53,7 @@ class CTkListbox(CTkBaseClass):
 
     self.command = command
     self.selected = selected
-    self.labels: Dict[str, List] = {}
+    self.labels: List[tkinter.Label] = []
     self.values = values
     self.state = state
 
@@ -114,18 +114,11 @@ class CTkListbox(CTkBaseClass):
           fill=ThemeManager.single_color(self.fg_color, self._appearance_mode)
         )
 
-    # Mark all the labels as pending deletion
-    for k in self.labels:
-      self.labels[k][0] = False
-
-    row = 0
-
-    for value in self.values:
-      if value in self.labels:
-        self.labels[value][0] = True
-        self.labels[value][1].configure(text=value)
+    for i, value in enumerate(self.values):
+      if i < len(self.labels):
+        self.labels[i].configure(text=value)
       else:
-        self.labels[value] = [True, tkinter.Label(
+        self.labels.append(tkinter.Label(
           master=self.__container,
           font=self.apply_font_scaling(self.text_font),
           text=value,
@@ -133,34 +126,29 @@ class CTkListbox(CTkBaseClass):
           justify=tkinter.RIGHT,
           anchor="e",
           cursor="hand2"
-        )]
+        ))
 
-      self.labels[value][1].bind("<Button-1>", lambda e,value=value: self.clicked(value, e))
+      self.labels[i].bind("<Button-1>", lambda e,value=value: self.clicked(value, e))
 
       if no_color_updates is False:
-        self.labels[value][1].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
+        self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
         if self.state == tkinter.DISABLED:
-          self.labels[value][1].configure(fg=(ThemeManager.single_color(self.text_color_disabled, self._appearance_mode)))
+          self.labels[i].configure(fg=(ThemeManager.single_color(self.text_color_disabled, self._appearance_mode)))
         else:
-          self.labels[value][1].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
+          self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
         if self.fg_color is None:
-          self.labels[value][1].configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
+          self.labels[i].configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
         else:
-          self.labels[value][1].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
+          self.labels[i].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
 
-      self.labels[value][1].pack(fill=tkinter.BOTH)
+      self.labels[i].pack(fill=tkinter.BOTH)
 
-      row += 1
-
-    # Delete the labels of values which are no longer present
-    for k in list(self.labels):
-      if not self.labels[k][0]:
-        if self.selected == k:
-          self.selected = None
-        self.labels[k][1].destroy()
-        del self.labels[k]
+    # Hide unused labels
+    for i in range(len(self.labels)):
+      if i >= len(self.values):
+        self.labels[i].pack_forget()
 
   def configure(self, require_redraw=False, **kwargs):
     if "values" in kwargs:
