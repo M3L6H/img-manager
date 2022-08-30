@@ -7,6 +7,7 @@ import db
 import models
 import pathlib
 import re
+import subprocess
 import threading
 import widgets
 
@@ -56,12 +57,15 @@ class MainWindow(customtkinter.CTk):
     self.__frame_left.grid_rowconfigure(0, weight=1)
     self.__frame_left.grid_columnconfigure(0, weight=1)
     self.__frame_left.grid(row=0, column=0, rowspan=2, sticky="nswe")
+    self.__frame_left.grid_propagate(False)
 
     self.__frame_right = customtkinter.CTkFrame(master=self)
     self.__frame_right.grid(row=0, column=1, sticky="nswe", padx=40, pady=40)
+    self.__frame_right.grid_propagate(False)
 
     self.__frame_bottom = customtkinter.CTkFrame(master=self, corner_radius=0)
     self.__frame_bottom.grid(row=1, column=1, sticky="nswe")
+    self.__frame_bottom.grid_propagate(False)
 
     # ===== LEFT FRAME =====
     self.__list_widget = widgets.CTkListbox(master=self.__frame_left, command=lambda x: self.load_media(x))
@@ -133,6 +137,51 @@ class MainWindow(customtkinter.CTk):
     self.__media_widget.grid(row=0, column=0, sticky="nswe")
     self.bind("<space>", lambda _: self.__media_widget.toggle_play())
 
+    # ===== BOTTOM FRAME =====
+    self.__frame_bottom.grid_columnconfigure(0, weight=1)
+    self.__frame_bottom.grid_rowconfigure(1, weight=1)
+
+    self.__frame_header = customtkinter.CTkFrame(
+      master=self.__frame_bottom,
+      corner_radius=0
+    )
+    self.__frame_header.grid(row=0, column=0, sticky="nswe")
+    self.__frame_header.grid_columnconfigure(1, weight=2)
+    self.__frame_header.grid_columnconfigure(2, weight=1)
+
+    self.__open_in_explorer_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("folder-open-icon.png"))
+    self.__open_in_explorer = tkinter.Label(
+      master=self.__frame_header,
+      image=self.__open_in_explorer_pimage,
+      text=None,
+      cursor="arrow",
+      bg=customtkinter.ThemeManager.single_color(customtkinter.ThemeManager.theme["color"]["button"], self.appearance_mode)
+    )
+    self.__open_in_explorer.grid(row=0, column=0)
+    self.__open_in_explorer.bind("<Button-1>", lambda _: self.open_in_explorer())
+
+    self.__file_name_var = tkinter.StringVar()
+    self.__file_name = customtkinter.CTkLabel(
+      master=self.__frame_header,
+      textvariable=self.__file_name_var,
+      anchor="w",
+      justify=tkinter.LEFT
+    )
+    self.__file_name.grid(row=0, column=1, padx=10, sticky="nswe")
+
+    self.__tag_entry = customtkinter.CTkEntry(
+      master=self.__frame_header,
+      state=tkinter.DISABLED,
+      cursor="arrow"
+    )
+    self.__tag_entry.grid(row=0, column=2, sticky="nswe")
+
+    self.__frame_body = customtkinter.CTkFrame(
+      master=self.__frame_bottom,
+      corner_radius=0
+    )
+    self.__frame_body.grid(row=1, column=0, sticky="nswe")
+
     # ===== LOAD DATA =====
     self.load_data()
 
@@ -197,6 +246,9 @@ class MainWindow(customtkinter.CTk):
 
   def load_media(self, local_path: str=None):
     if local_path:
+      self.__file_name_var.set(local_path)
+      self.__open_in_explorer.configure(cursor="hand2")
+      self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
       self.__media_widget.configure(file=local_path)
 
   def max_page(self) -> int:
@@ -211,6 +263,11 @@ class MainWindow(customtkinter.CTk):
 
   def on_closing(self, event=0):
     self.destroy()
+
+  def open_in_explorer(self):
+    filename = self.__file_name_var.get()
+    if filename:
+      subprocess.Popen(f"explorer /select,\"{pathlib.WindowsPath(filename)}\"")
 
   def prev_page(self):
     self.disable_pagination()
