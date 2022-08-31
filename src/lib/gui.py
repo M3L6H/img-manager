@@ -181,6 +181,21 @@ class MainWindow(customtkinter.CTk):
       corner_radius=0
     )
     self.__frame_body.grid(row=1, column=0, sticky="nswe")
+    self.__frame_body.grid_rowconfigure(0, weight=1)
+    self.__frame_body.grid_columnconfigure(0, weight=1)
+
+    self.__collapsible = widgets.Collapsible(
+      master=self.__frame_body,
+      children={
+        "1": ("clothes", { "2": ("underwear", { "3": ("panties", { "4": ("thong", {}) }) }) }),
+        "5": ("people", { "6": ("f", {}) })
+      },
+      delete_command=lambda id: print(id),
+      id="0",
+      root=True,
+      value="Tags"
+    )
+    self.__collapsible.grid(row=0, column=0, sticky="nswe", pady=10)
 
     # ===== LOAD DATA =====
     self.load_data()

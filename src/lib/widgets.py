@@ -2,16 +2,42 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from canvas_image import CanvasImage
 import enum
-from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, Settings, ThemeManager
+from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, ThemeManager
 import pathlib
 from PIL import Image, UnidentifiedImageError
-import sys
 import tkinter
 import vlc
 
 HOME = pathlib.Path.home()
 IMAGE_DIR = HOME.joinpath(".img-manager", "images")
 TICK_WIDTH = 1/50
+
+class CTkAutoScrollbar(CTkScrollbar):
+  def __init__(self, *args,
+    side: str=tkinter.RIGHT,
+    **kwargs
+  ):
+    super().__init__(*args, **kwargs)
+
+    self.__grid = False
+    self.side = side
+
+  def grid(self, **kwargs):
+    super().grid(**kwargs)
+    self.__grid = True
+
+  def set(self, lo: int, hi: int):
+    if float(lo) <= 0.0 and float(hi) >= 1.0:
+      if self.__grid:
+        self.grid_remove()
+      else:
+        self.pack_forget()
+    else:
+      if self.__grid:
+        self.grid()
+      else:
+        self.pack(side=self.side, fill="y")
+      super().set(lo, hi)
 
 class CTkListbox(CTkBaseClass):
   def __init__(self, *args,
@@ -28,7 +54,7 @@ class CTkListbox(CTkBaseClass):
                  state: str = "normal",
                  selected: int=None,
                  values: List[str]=[],
-                 command: Callable[[str], any] = None,
+                 command: Callable[[str], any]=None,
                  **kwargs):
     super().__init__(*args, bg_color=bg_color, width=width, height=height, **kwargs)
 
@@ -64,6 +90,7 @@ class CTkListbox(CTkBaseClass):
       width=self.apply_widget_scaling(self._desired_width),
       height=self.apply_widget_scaling(self._desired_height)
     )
+    self.canvas.pack(side="left", fill="both", expand=True)
     self.draw_engine = DrawEngine(self.canvas)
 
     # configure
@@ -72,13 +99,19 @@ class CTkListbox(CTkBaseClass):
 
     # inner frame
     self.__container = CTkFrame(
-      master=self,
+      master=self.canvas,
       corner_radius=0
     )
-    self.__container.grid(row=0, column=0, padx=10, sticky="nswe")
-    self.__container.pack_propagate(0)
+    self.__container.bind("<Configure>", lambda _: self.update_canvas())
+    self.__scrollbar = CTkAutoScrollbar(
+      master=self,
+      command=self.canvas.yview
+    )
+    self.__scrollbar.pack(side=tkinter.RIGHT, fill="y")
+    self.canvas.configure(yscrollcommand=self.__scrollbar.set)
 
     # initial draw
+    self.canvas.create_window((0, 0), window=self.__container, anchor="nw")
     self.configure(cursor="arrow")
     self.draw()
 
@@ -150,6 +183,10 @@ class CTkListbox(CTkBaseClass):
       if i >= len(self.values):
         self.labels[i].pack_forget()
 
+    self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+    self.canvas.update()
+    self.canvas.xview_moveto(1.0)
+
   def configure(self, require_redraw=False, **kwargs):
     if "values" in kwargs:
       self.values = kwargs.pop("values")
@@ -199,6 +236,227 @@ class CTkListbox(CTkBaseClass):
         self.selected = i
         self.command(value)
 
+  def update_canvas(self):
+    self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+    self.canvas.xview_moveto(1.0)
+
+class CollapsibleState(enum.Enum):
+  COLLAPSED = 0
+  OPEN = 1
+
+class Collapsible(CTkBaseClass):
+  def __init__(self, *args,
+    bg_color: Union[str, Tuple[str, str], None]=None,
+    fg_color: Union[str, Tuple[str, str], None] = "default_theme",
+    children: Dict[str, Tuple[str, Dict]]={},
+    delete_command: Union[Callable[[str], any], List[Callable[[str], any]]]=[],
+    height: int=50,
+    id: str="",
+    root: bool=False,
+    state: CollapsibleState=CollapsibleState.COLLAPSED,
+    value: str="",
+    width: int=300,
+    **kwargs
+  ):
+    super().__init__(*args, bg_color=bg_color, height=height, width=width, **kwargs)
+
+    if fg_color == "default_theme":
+      if isinstance(self.master, CTkFrame):
+        if self.master.fg_color == ThemeManager.theme["color"]["frame_low"]:
+          self.fg_color = ThemeManager.theme["color"]["frame_high"]
+        else:
+          self.fg_color = ThemeManager.theme["color"]["frame_low"]
+      else:
+        self.fg_color = ThemeManager.theme["color"]["frame_low"]
+    else:
+      self.fg_color = fg_color
+
+    self.__children = children
+    self.__child_collapsibles: List["Collapsible"] = []
+    self.__delete_command = delete_command if isinstance(delete_command, list) else [delete_command]
+    self.__id = id
+    self.__state = state
+
+    self.grid_rowconfigure(1, weight=1)
+    self.grid_columnconfigure(0, weight=1)
+
+    self.__header = CTkFrame(
+      master=self,
+      corner_radius=0,
+      cursor="hand2" if len(self.__children) > 0 else "arrow",
+      fg_color=self.fg_color
+    )
+    self.__header.grid(row=0, column=0, sticky="nswe")
+    self.__header.grid_rowconfigure(0, weight=1)
+
+    self.__caret_down_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("caret-down-icon.png"))
+    self.__caret_right_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("caret-right-icon.png"))
+    self.__caret = tkinter.Label(
+      master=self.__header,
+      image=self.__caret_down_pimage if state == CollapsibleState.OPEN else self.__caret_right_pimage,
+      text=None,
+      bg=ThemeManager.single_color(ThemeManager.theme["color"]["button"], self._appearance_mode)
+    )
+
+    self.__value_var = tkinter.StringVar(value=value)
+    self.__label = CTkLabel(
+      master=self.__header,
+      textvariable=self.__value_var
+    )
+    self.__label.grid(row=0, column=1, sticky="nswe")
+
+    if not root:
+      self.__delete_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("delete-icon.png"))
+      self.__delete_label = tkinter.Label(
+        master=self.__header,
+        image=self.__delete_pimage,
+        text=None,
+        cursor="hand2",
+        bg=ThemeManager.single_color(ThemeManager.theme["color"]["button"], self._appearance_mode)
+      )
+      self.__delete_label.grid(row=0, column=2)
+      if len(self.__delete_command) > 0:
+        self.__delete_label.bind("<Button-1>", lambda _: self.delete())
+
+    self.__container = CTkFrame(
+      master=self,
+      fg_color=self.fg_color
+    )
+    self.__container.grid_columnconfigure(0, weight=1)
+
+    self.__caret.grid(row=0, column=0)
+    self.__container.grid(row=1, column=0, sticky="nswe", padx=(10, 0))
+
+    if len(self.__children) == 0:
+      self.__caret.grid_remove()
+      self.__container.grid_remove()
+    else:
+      self.__caret.bind("<Button-1>", lambda _: self.toggle_state())
+      self.__header.canvas.bind("<Button-1>", lambda _: self.toggle_state())
+
+    if self.__state == CollapsibleState.COLLAPSED:
+      self.__container.grid_remove()
+
+  def configure(self, require_redraw=False, **kwargs):
+    if "delete_command" in kwargs:
+      delete_command = kwargs.pop("delete_command")
+
+      if delete_command is None:
+        self.__delete_command = []
+        self.__delete_label.grid_remove()
+      else:
+        self.__delete_command = delete_command if isinstance(delete_command, list) else [delete_command]
+        self.__delete_label.grid()
+
+    if "id" in kwargs:
+      self.__id = kwargs.pop("id")
+
+    if "state" in kwargs:
+      self.__state = kwargs.pop("state")
+
+      if self.__state == CollapsibleState.OPEN:
+        self.__container.grid()
+        self.__caret.configure(image=self.__caret_down_pimage)
+      else:
+        self.__container.grid_remove()
+        self.__caret.configure(image=self.__caret_right_pimage)
+
+      require_redraw = True
+
+    if "children" in kwargs:
+      children = kwargs.pop("children")
+
+      require_redraw = require_redraw or children != self.__children
+
+      self.__children: Dict[str, Tuple[str, Dict]] = children
+
+      if self.__children is None:
+        self.__children = []
+
+      if len(self.__children) == 0:
+        self.__caret.grid_remove()
+        self.__container.grid_remove()
+        self.__caret.bind("<Button-1>", None)
+        self.__header.canvas.bind("<Button-1>", None)
+        self.__header.configure(cursor="arrow")
+      else:
+        self.__caret.grid()
+        self.__caret.bind("<Button-1>", lambda _: self.toggle_state())
+        self.__header.canvas.bind("<Button-1>", lambda _: self.toggle_state())
+        self.__header.configure(cursor="hand2")
+
+        if self.__state == CollapsibleState.OPEN:
+          self.__container.grid()
+
+    if "value" in kwargs:
+      self.__value_var.set(kwargs.pop("value"))
+      require_redraw = True
+
+    super().configure(require_redraw=require_redraw, **kwargs)
+
+  def insert(self, child: Dict[str, Tuple[str, Dict]]):
+    self.__insert(child, self.__children)
+
+  def __insert(self, child: Dict[str, Tuple[str, Dict]], tree: Dict[str, Tuple[str, Dict]]):
+    for k in child:
+      if k in tree:
+        self.__insert(child[k][1], tree[k])
+      else:
+        tree[k] = child[k]
+
+  def delete(self):
+    queue = [self.__children]
+    to_delete = [self.__id]
+    for d in queue:
+      for id in d:
+        to_delete.append(id)
+        queue.append(d[id][1])
+    for i in range(len(self.__delete_command) - 1):
+      cmd = self.__delete_command[i]
+      cmd(self.__id)
+    for id in to_delete:
+      self.__delete_command[-1](id)
+
+  def delete_command_prefix(self, id: str):
+    del self.__children[id]
+    self.configure(require_redraw=True, children=self.__children)
+
+  def draw(self, no_color_updates=False):
+    i = 0
+
+    for id in self.__children:
+      value, children = self.__children[id]
+
+      if i < len(self.__child_collapsibles):
+        self.__child_collapsibles[i].configure(
+          children=children,
+          delete_command=[self.delete_command_prefix, self.__delete_command[-1]],
+          id=id,
+          value=value
+        )
+      else:
+        self.__child_collapsibles.append(Collapsible(
+          master=self.__container,
+          children=children,
+          delete_command=[self.delete_command_prefix, self.__delete_command[-1]],
+          id=id,
+          value=value
+        ))
+
+      self.__child_collapsibles[i].grid(row=i, column=0, sticky="nswe")
+      i += 1
+
+    # Remove unused children
+    for i in range(len(self.__child_collapsibles)):
+      if i >= len(self.__children):
+        self.__child_collapsibles[i].destroy()
+
+  def toggle_state(self):
+    if self.__state == CollapsibleState.COLLAPSED:
+      self.configure(state=CollapsibleState.OPEN)
+    else:
+      self.configure(state=CollapsibleState.COLLAPSED)
+
 class PlayerState(enum.Enum):
   STOPPED = 0
   PLAYING = 1
@@ -216,14 +474,6 @@ class VideoPlayer(CTkBaseClass):
 
     self.grid_rowconfigure(0, weight=1)
     self.grid_columnconfigure(0, weight=1)
-
-    self.canvas = CTkCanvas(
-      master=self,
-      highlightthickness=0,
-      width=self.apply_widget_scaling(self._desired_width),
-      height=self.apply_widget_scaling(self._desired_height)
-    )
-    self.draw_engine = DrawEngine(self.canvas)
 
     self.top_frame = CTkFrame(master=self)
     self.top_frame.grid_rowconfigure(0, weight=1)
