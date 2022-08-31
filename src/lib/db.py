@@ -1,4 +1,4 @@
-from typing import Dict, ForwardRef, Generic, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, ForwardRef, Generic, List, Optional, Tuple, TypeVar, Union
 
 import datetime
 import enum
@@ -19,7 +19,15 @@ class Type(enum.Enum):
   TIMESTAMP = 4
 
 class Field:
-  def __init__(self, name: str, field_type: Type=Type.INTEGER, nonnull: bool=False, references: str=None, primarykey: bool = False):
+  def __init__(self,
+    name: str,
+    field_type: Type=Type.INTEGER,
+    nonnull: bool=False,
+    references: str=None,
+    index: bool=False,
+    unique: Union[bool, List[str]]=False,
+    primarykey: bool=False
+  ):
     if not re.match(r"[_a-z]+", name):
       raise ValueError(f"Invalid name {name}")
 
@@ -29,13 +37,38 @@ class Field:
     self.__name = name
     self.__type = field_type
     self.__nonnull = nonnull
-    self.__primarykey = primarykey
     self.__references = references
+    self.__index = index
+    self.__unique = unique
+    self.__primarykey = primarykey
+
+  def get_index(self) -> str:
+    '''
+    Returns a template string with the command to create an index for this
+    Field
+    '''
+    if self.__index:
+      return f"CREATE INDEX {self.__name}_index ON {{}} ({self.__name});"
+    return ""
 
   def get_reference(self) -> str:
     if self.__references is None: return ""
 
     return f"FOREIGN KEY ({self.__name}) REFERENCES {self.__references}"
+
+  def get_unique(self) -> str:
+    '''
+    Returns a string with the required command to create a unique constraint on
+    this field.
+    '''
+    if isinstance(self.__unique, list):
+      self.__unique.append(self.__name)
+      return "UNIQUE({})".format(", ".join(self.__unique))
+
+    if self.__unique:
+      return f"UNIQUE({self.__name})"
+
+    return ""
 
   def is_primary(self) -> bool:
     return self.__primarykey
@@ -52,10 +85,32 @@ class Field:
 
     return " ".join(fields)
 
+  def __repr__(self):
+    return self.to_str()
+
+  def __str__(self):
+    return self.to_str()
+
 SCHEMA: Dict[str, List[Field]] = {}
 T = TypeVar("T")
 
 class ForeignKey(Generic[T]):
+  '''
+  Wrapper for a foreign key into another table. The inner type should be the
+  class name of the model. Should be the innermost wrapper.
+  '''
+  pass
+
+class Index(Generic[T]):
+  '''
+  Wrapper to indicate an index should be created on this column.
+  '''
+  pass
+
+class Unique(Generic[T]):
+  '''
+  Wrapper to create a unique constraint on a column.
+  '''
   pass
 
 TYPE_MAP = {
@@ -118,6 +173,7 @@ class DB:
     query = f"CREATE TABLE {name} (\n"
     pkey = False
     references = ",\n".join(filter(lambda x: len(x) > 0, [f.get_reference() for f in fields]))
+    uniques = ",\n".join([f.get_unique() for f in fields if len(f.get_unique()) > 0])
     for i in range(len(fields)):
       field = fields[i]
 
@@ -130,12 +186,18 @@ class DB:
         pkey = True
 
       query += field.to_str()
-      if len(references) > 0 or i < len(fields) - 1:
+      if len(references) > 0 or len(uniques) > 0 or i < len(fields) - 1:
         query += ","
       query += "\n"
     if len(references) > 0:
-      query += references + "\n"
+      query += references
+      if len(uniques) > 0:
+        query += ","
+      query += "\n"
+    if len(uniques) > 0:
+      query += uniques + "\n"
     query += ");"
+    queries = [query]
 
     if not pkey:
       if updating:
@@ -143,7 +205,9 @@ class DB:
         self.__connection.commit()
       raise ValueError("Table requires one field to be marked as a primary key")
 
-    self.__execute(query)
+    queries.extend([f.get_index().format(name) for f in fields if len(f.get_index()) > 0])
+
+    self.__execute(queries)
 
     if updating:
       self.__copy_data(temp_name, name)
@@ -208,27 +272,31 @@ class DB:
       print(f"Dropping {table}")
     self.__execute(f"DROP TABLE IF EXISTS {table};")
 
-  def __execute(self, query: str, fetch: Fetch=Fetch.NONE, params: Tuple[any]=()) -> any:
+  def __execute(self, query: Union[str, List[str]], fetch: Fetch=Fetch.NONE, params: Tuple[any]=()) -> any:
     if not self.__connection:
       raise RuntimeError("Not connected to DB")
 
     cursor = self.__connection.cursor()
 
-    try:
-      res = cursor.execute(query, params)
-      if self.verbose:
-        print(f"Executing: {query}")
+    if isinstance(query, str):
+      query = [query]
 
-      data = None
-      if fetch == Fetch.ONE:
-        data = res.fetchone()
-      elif fetch == Fetch.ALL:
-        data = res.fetchall()
+    for q in query:
+      try:
+        if self.verbose:
+          print(f"Executing: {q}")
+        res = cursor.execute(q, params)
 
-      cursor.close()
-      return data
-    except sqlite3.Error as e:
-      print(f"Failed to execute {query} due to {e}")
+        data = None
+        if fetch == Fetch.ONE:
+          data = res.fetchone()
+        elif fetch == Fetch.ALL:
+          data = res.fetchall()
+
+        cursor.close()
+        return data
+      except sqlite3.Error as e:
+        print(f"Failed to execute {query} due to {e}")
 
   def __get_tables(self) -> List[str]:
     res = self.__execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
@@ -261,9 +329,33 @@ class DB:
   def __table_exists(self, table_name: str) -> bool:
     return self.__execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", Fetch.ONE, (table_name,)) != None
 
+def unwrap_annotation(annotation: Any) -> Tuple[Type, Dict[str, any]]:
+  if "__args__" not in dir(annotation):
+    if hasattr(annotation, "__name__") and annotation.__name__ in TYPE_MAP:
+      return (TYPE_MAP[annotation.__name__], {})
+    else:
+      return (None, {})
+
+  if re.match(r"^\w*\.?Index\[.*\]$", str(annotation)):
+    t, flags = unwrap_annotation(annotation.__args__[0])
+    flags["index"] = True
+    return (t, flags)
+
+  if re.match(r"^\w*\.?Unique\[.*\]$", str(annotation)):
+    t, flags = unwrap_annotation(annotation.__args__[0])
+    flags["unique"] = True
+    return (t, flags)
+
+  if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)):
+    _, flags = unwrap_annotation(annotation.__args__[0])
+    ref = annotation.__args__[0]
+    ref = ref.__forward_arg__ if isinstance(ref, ForwardRef) else ref.__name__
+    flags["ref"] = f"{ref.upper()} (id)"
+    return (Type.INTEGER, flags)
+
 def model(my_class):
   global SCHEMA
-  fields = [Field("id", primarykey=True)]
+  fields = [Field("id", index=True, primarykey=True)]
   params = inspect.signature(my_class.__init__).parameters
   table: str = my_class.__name__.upper()
 
@@ -272,19 +364,15 @@ def model(my_class):
       continue
     param = params[p]
     annotation = param.annotation
-    field_type = Type.INTEGER if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)) else TYPE_MAP[annotation.__name__]
+    field_type, flags = unwrap_annotation(annotation)
+
+    create_index = "index" in flags
+    make_unique = "unique" in flags
     ref = None
-    if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)):
-      ref = annotation.__args__[0]
+    if "ref" in flags:
+      ref = flags["ref"]
 
-      if isinstance(ref, ForwardRef):
-        ref = ref.__forward_arg__
-      else:
-        ref = ref.__name__
-
-      ref = f"{ref.upper()} (id)"
-
-    fields.append(Field(param.name, field_type, param.default == inspect.Parameter.empty, ref))
+    fields.append(Field(param.name, field_type, param.default == inspect.Parameter.empty, ref, create_index, make_unique))
 
   SCHEMA[table] = fields
 
