@@ -25,6 +25,6 @@ class ImageTag:
 
 @db.model
 class Tag:
-  def __init__(self, name: str, parent: db.ForeignKey["Tag"]=None):
+  def __init__(self, name: db.Unique[db.Index[str]], parent: db.ForeignKey["Tag"]=None):
     self.name = name
     self.parent = parent
