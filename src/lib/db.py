@@ -6,6 +6,8 @@ import inspect
 import re
 import sqlite3
 
+import utils
+
 class Fetch(enum.Enum):
   NONE = 0
   ONE = 1
@@ -48,7 +50,8 @@ class Field:
     Field
     '''
     if self.__index:
-      return f"CREATE INDEX {self.__name}_index ON {{}} ({self.__name});"
+      index_name = f"{self.__name}_index_{utils.unsafe_random_str()}"
+      return f"CREATE INDEX {index_name} ON {{}} ({self.__name});"
     return ""
 
   def get_reference(self) -> str:
@@ -295,9 +298,15 @@ class DB:
           data.append(res.fetchall())
 
       except sqlite3.Error as e:
-        print(f"Failed to execute {query} due to {e}")
+        print(f"Failed to execute {q} due to {e}")
 
     cursor.close()
+
+    if len(data) == 0:
+      data = None
+    elif len(data) == 1:
+      data = data[0]
+
     return data
 
   def __get_tables(self) -> List[str]:

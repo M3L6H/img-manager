@@ -1,29 +1,15 @@
 from typing import List, Set
 
 import pathlib
-import os
-from tqdm import tqdm
-
-import db
-import models
-
-SUPPORTED_MEDIA = { ".jpg", ".jpeg", ".png", ".mp4", ".mov" }
-
-def add(my_db: db.DB, to_add: str) -> None:
-  to_add = pathlib.Path(to_add)
-
-  if os.path.isdir(to_add):
-    total = 0
-    registered = 0
-    for img in tqdm(search_dir(to_add, SUPPORTED_MEDIA)):
-      total += 1
-      if not models.Image.find_one(my_db, local_path=str(img)):
-        registered += 1
-        models.Image.create(my_db, local_path=str(img))
-    print(f"Registered {registered}/{total} files in {to_add}")
-  elif not models.Image.find_one(my_db, local_path=str(to_add)):
-    models.Image.create(my_db, local_path=str(to_add))
-    print(f"Registered {to_add}")
+import random
+import string
 
 def search_dir(dir: pathlib.Path, suffixes: Set[str]) -> List[pathlib.Path]:
   return [p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes]
+
+def unsafe_random_str(k: int=8, options: str=string.ascii_lowercase+string.digits) -> str:
+  '''
+  Generates a cryptographically insecure string of length k by choosing
+  randomly from the characters in options.
+  '''
+  return "".join(random.choices(options, k=k))

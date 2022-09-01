@@ -18,8 +18,8 @@ DEFAULT_DB = LOCAL_DIR.joinpath("db.sqlite")
 sys.path.append(os.path.abspath(str(LIB_DIR)))
 
 import db
+import functions
 import gui
-import utils
 
 customtkinter.set_default_color_theme(str(THEME))
 verbose = False
@@ -84,7 +84,7 @@ def main(args: List[str]) -> None:
 
   # Run operation
   if ns.add:
-    utils.add(my_db, ns.add)
+    functions.add(my_db, ns.add)
   elif ns.gui:
     mw = gui.MainWindow(my_db, verbose=verbose)
     mw.show()
