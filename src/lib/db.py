@@ -281,22 +281,24 @@ class DB:
     if isinstance(query, str):
       query = [query]
 
+    data = []
+
     for q in query:
       try:
         if self.verbose:
           print(f"Executing: {q}")
         res = cursor.execute(q, params)
 
-        data = None
         if fetch == Fetch.ONE:
-          data = res.fetchone()
+          data.append(res.fetchone())
         elif fetch == Fetch.ALL:
-          data = res.fetchall()
+          data.append(res.fetchall())
 
-        cursor.close()
-        return data
       except sqlite3.Error as e:
         print(f"Failed to execute {query} due to {e}")
+
+    cursor.close()
+    return data
 
   def __get_tables(self) -> List[str]:
     res = self.__execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
