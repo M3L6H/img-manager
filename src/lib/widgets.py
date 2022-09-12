@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 from canvas_image import CanvasImage
 import enum
@@ -12,7 +12,7 @@ HOME = pathlib.Path.home()
 IMAGE_DIR = HOME.joinpath(".img-manager", "images")
 TICK_WIDTH = 1/50
 
-class CTkAutoScrollbar(CTkScrollbar):
+class CTkAutoScrollbar(tkinter.Scrollbar):
   def __init__(self, *args,
     side: str=tkinter.RIGHT,
     **kwargs
@@ -23,8 +23,8 @@ class CTkAutoScrollbar(CTkScrollbar):
     self.side = side
 
   def grid(self, **kwargs):
-    super().grid(**kwargs)
     self.__grid = True
+    super().grid(**kwargs)
 
   def set(self, lo: int, hi: int):
     if float(lo) <= 0.0 and float(hi) >= 1.0:
@@ -83,69 +83,43 @@ class CTkListbox(CTkBaseClass):
     self.values = values
     self.state = state
 
+    # configure
+    self.grid_rowconfigure(0, weight=1)
+    self.grid_columnconfigure(0, weight=1)
+
     # canvas
-    self.canvas = CTkCanvas(
+    self.canvas = tkinter.Canvas(
       master=self,
       highlightthickness=0,
       width=self.apply_widget_scaling(self._desired_width),
       height=self.apply_widget_scaling(self._desired_height)
     )
-    self.canvas.pack(side="left", fill="both", expand=True)
+    self.canvas.grid(row=0, column=0, sticky="nswe")
     self.draw_engine = DrawEngine(self.canvas)
 
-    # configure
-    self.grid_rowconfigure(0, weight=1)
-    self.grid_columnconfigure(0, weight=1)
-
     # inner frame
-    self.__container = CTkFrame(
-      master=self.canvas,
-      corner_radius=0
+    self.__container = tkinter.Frame(
+      master=self.canvas
     )
     self.__container.bind("<Configure>", lambda _: self.update_canvas())
     self.__scrollbar = CTkAutoScrollbar(
       master=self,
       command=self.canvas.yview
     )
-    self.__scrollbar.pack(side=tkinter.RIGHT, fill="y")
+    self.__scrollbar.grid(row=0, column=1, sticky="ns")
     self.canvas.configure(yscrollcommand=self.__scrollbar.set)
 
-    # initial draw
     self.canvas.create_window((0, 0), window=self.__container, anchor="nw")
+
+    # initial draw
     self.configure(cursor="arrow")
     self.draw()
 
   def draw(self, no_color_updates=False):
-    requires_recoloring = self.draw_engine.draw_rounded_rect_with_border(
-      self.apply_widget_scaling(self._current_width),
-      self.apply_widget_scaling(self._current_height),
-      0,
-      self.apply_widget_scaling(self.border_width)
-    )
+    self.__container.grid_columnconfigure(0, minsize=self.canvas.winfo_width(), weight=1)
 
-    if no_color_updates is False or requires_recoloring:
+    if no_color_updates is False:
       self.canvas.configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
-
-      # set color for the border parts (outline)
-      self.canvas.itemconfig(
-        "border_parts",
-        outline=ThemeManager.single_color(self.border_color, self._appearance_mode),
-        fill=ThemeManager.single_color(self.border_color, self._appearance_mode)
-      )
-
-      # set color for selection
-      if self.fg_color is None:
-        self.canvas.itemconfig(
-          "inner_parts",
-          outline=ThemeManager.single_color(self.bg_color, self._appearance_mode),
-          fill=ThemeManager.single_color(self.bg_color, self._appearance_mode)
-        )
-      else:
-        self.canvas.itemconfig(
-          "inner_parts",
-          outline=ThemeManager.single_color(self.fg_color, self._appearance_mode),
-          fill=ThemeManager.single_color(self.fg_color, self._appearance_mode)
-        )
 
     for i, value in enumerate(self.values):
       if i < len(self.labels):
@@ -171,12 +145,12 @@ class CTkListbox(CTkBaseClass):
         else:
           self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
-        if self.fg_color is None:
+        if i % 2 == 0:
           self.labels[i].configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
         else:
           self.labels[i].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
 
-      self.labels[i].pack(fill=tkinter.BOTH)
+      self.labels[i].grid(row=i, column=0, sticky="we")
 
     # Hide unused labels
     for i in range(len(self.labels)):
