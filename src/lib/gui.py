@@ -36,6 +36,7 @@ class MainWindow(customtkinter.CTk):
     self.__max_page = None
     self.__page = 0
     self.__page_var = tkinter.StringVar()
+    self.__tag_var = tkinter.StringVar()
     self.update_page_var()
     self.__verbose = verbose
 
@@ -169,10 +170,15 @@ class MainWindow(customtkinter.CTk):
     )
     self.__file_name.grid(row=0, column=1, padx=10, sticky="nswe")
 
-    self.__tag_entry = customtkinter.CTkEntry(
+    # self.__tag_entry = customtkinter.CTkEntry(
+    self.__tag_entry = tkinter.Entry(
       master=self.__frame_header,
+      textvariable=self.__tag_var,
       state=tkinter.DISABLED,
-      cursor="arrow"
+      cursor="arrow",
+      validate=tkinter.ALL,
+      validatecommand=(self.register(self.validate_tag_entry), "%P"),
+      invalidcommand=(self.register(lambda : print("Invalid called")),)
     )
     self.__tag_entry.grid(row=0, column=2, sticky="nswe")
 
@@ -265,6 +271,8 @@ class MainWindow(customtkinter.CTk):
       self.__open_in_explorer.configure(cursor="hand2")
       self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
       self.__media_widget.configure(file=local_path)
+    else:
+      self.__tag_entry.configure(state=tkinter.DISABLED, cursor="arrow")
 
   def max_page(self) -> int:
     if self.__max_page == None:
@@ -299,3 +307,19 @@ class MainWindow(customtkinter.CTk):
     if re.match(r"^\d*$", value) is None:
       return False
     return True
+
+  def validate_tag_entry(self, value: str):
+    if re.match(r"^[-:a-z0-9]*$", value):
+      return True
+
+    if re.match(r"^[-:a-z0-9]* $", value):
+      self.__tag_var.set(self.__tag_var.get() + "-")
+    elif re.match(r"^[-:a-z0-9]*[A-Z]$", value):
+      self.__tag_var.set(self.__tag_var.get() + value[-1].lower())
+    elif re.match(r"^[-:a-z0-9]*;$", value):
+      self.__tag_var.set(self.__tag_var.get() + ":")
+
+    self.__tag_entry.icursor(len(self.__tag_var.get()))
+    self.__tag_entry.after_idle(lambda: self.__tag_entry.configure(validate=tkinter.ALL))
+
+    return False

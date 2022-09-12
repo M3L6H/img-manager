@@ -2,7 +2,7 @@ from typing import Callable, Dict, List, Tuple, Union
 
 from canvas_image import CanvasImage
 import enum
-from customtkinter import CTkBaseClass, CTkButton, CTkCanvas, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, ThemeManager
+from customtkinter import CTkBaseClass, CTkButton, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, ThemeManager
 import pathlib
 from PIL import Image, UnidentifiedImageError
 import tkinter
