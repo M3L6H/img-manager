@@ -56,7 +56,7 @@ class CTkListbox(CTkBaseClass):
                  text_font: any = "default_theme",
                  state: str = "normal",
                  selected: int=None,
-                 values: List[str]=[],
+                 values: List[Tuple[int, str]]=[],
                  command: Callable[[str], any]=None,
                  **kwargs):
     super().__init__(*args, bg_color=bg_color, width=width, height=height, **kwargs)
@@ -124,7 +124,7 @@ class CTkListbox(CTkBaseClass):
     if no_color_updates is False:
       self.canvas.configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
 
-    for i, value in enumerate(self.values):
+    for i, (_, value) in enumerate(self.values):
       if i < len(self.labels):
         self.labels[i].configure(text=value, cursor="hand2", state=tkinter.NORMAL)
       else:
@@ -201,7 +201,7 @@ class CTkListbox(CTkBaseClass):
     super().configure(require_redraw=require_redraw, **kwargs)
 
   def clicked(self, i: int):
-    value = self.values[i]
+    id, _ = self.values[i]
     if self.command:
       if self.state != tkinter.DISABLED and self.selected != i:
         label = self.labels[i]
@@ -211,7 +211,7 @@ class CTkListbox(CTkBaseClass):
           self.labels[self.selected].configure(state=tkinter.NORMAL, cursor="hand2")
 
         self.selected = i
-        self.command(value)
+        self.command(id)
 
   def update_canvas(self):
     self.canvas.configure(scrollregion=self.canvas.bbox("all"))

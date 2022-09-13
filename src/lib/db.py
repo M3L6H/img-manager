@@ -220,6 +220,10 @@ class DB:
 
     self.__connection.commit()
 
+  def delete(self, table: str, id: int):
+    self.execute(f"DELETE FROM {table} WHERE id = ?;", Fetch.NONE, (id,))
+    self.__connection.commit()
+
   def disconnect(self):
     if self.verbose:
       print("Disconnecting from db")
@@ -331,7 +335,7 @@ class DB:
         else:
           conditions.append(f" {k} IS NOT NULL AND {k}!=?")
       if len(conditions) > 0:
-        query += " WHERE " + " AND ".join(conditions)
+        query += " WHERE" + " AND".join(conditions)
       if limit:
         query += f" LIMIT {limit}"
       if offset:
@@ -452,6 +456,16 @@ def create(my_class, db, {params}):
       return my_instance
 
   my_class.find_by_id = find_by_id
+
+  def delete(self, db: DB) -> None:
+    db.delete(table, self.id)
+
+  my_class.delete = delete
+
+  def delete_by_id(db: DB, id: int) -> None:
+    db.delete(table, id)
+
+  my_class.delete_by_id = delete_by_id
 
   return my_class
 

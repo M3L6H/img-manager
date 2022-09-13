@@ -33,9 +33,11 @@ class MainWindow(customtkinter.CTk):
 
     # ===== INITIALIZE MEMBERS =====
     self.__entries_per_page = 75
+    self.__images = []
     self.__max_page = None
     self.__page = 0
     self.__page_var = tkinter.StringVar()
+    self.__selected_image = None
     self.__tag_var = tkinter.StringVar()
     self.update_page_var()
     self.__verbose = verbose
@@ -193,7 +195,7 @@ class MainWindow(customtkinter.CTk):
 
     self.__collapsible = widgets.Collapsible(
       master=self.__frame_body,
-      delete_command=lambda id: print(id),
+      delete_command=self.delete_image_tag,
       id="0",
       root=True,
       value="Tags"
@@ -235,6 +237,16 @@ class MainWindow(customtkinter.CTk):
     self.__tag_var.set("")
     self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm", validate=tkinter.ALL)
     self.__tag_entry.focus()
+
+  def delete_image_tag(self, id):
+    thread = threading.Thread(target=lambda id=id: self.__delete_image_tag_task(id))
+    thread.start()
+
+  def __delete_image_tag_task(self, tag_id):
+    db_copy = db.DB.copy(self.__my_db)
+    models.ImageTag.find_one(db_copy, image=self.__selected_image.id, tag=tag_id).delete(db_copy)
+    if len(models.ImageTag.find_all(db_copy, tag=tag_id)) == 0:
+      models.Tag.delete_by_id(db_copy, tag_id)
 
   def disable_pagination(self):
     self.__first_page.configure(state=tkinter.DISABLED)
@@ -287,29 +299,33 @@ class MainWindow(customtkinter.CTk):
     self.finalize_page_change()
 
   def load_data(self):
-    images: List[models.Image] = models.Image.find_all(
+    self.__images: List[models.Image] = models.Image.find_all(
       db.DB.copy(self.__my_db),
       limit=self.__entries_per_page,
       offset=self.__page * self.__entries_per_page,
       local_path="*"
     )
-    self.__list_widget.configure(values=[img.local_path for img in images])
+    self.__list_widget.configure(values=[(i, img.local_path) for i, img in enumerate(self.__images)])
 
-  def load_media(self, local_path: str=None):
-    if local_path:
+  def load_media(self, i: int=None):
+    if i is not None:
+      self.__selected_image = self.__images[i]
+      local_path = self.__selected_image.local_path
       self.__file_name_var.set(local_path)
       thread = threading.Thread(target=self.__load_media_task)
       thread.start()
       self.__open_in_explorer.configure(cursor="hand2")
       self.__media_widget.configure(file=local_path)
     else:
+      self.__selected_image = None
+      self.__collapsible.configure(children={})
       self.__open_in_explorer.configure(cursor="arrow")
       self.__tag_entry.configure(state=tkinter.DISABLED, cursor="arrow")
 
   def __load_media_task(self):
     db_copy = db.DB.copy(self.__my_db)
-    query = f"SELECT TAG.id, TAG.name, TAG.parent FROM TAG JOIN IMAGETAG ON IMAGETAG.tag == TAG.id JOIN IMAGE ON IMAGE.id == IMAGETAG.image WHERE IMAGE.local_path == '{self.__file_name_var.get()}';"
-    tags: List = db_copy.execute(query, db.Fetch.ALL)
+    query = "SELECT TAG.id, TAG.name, TAG.parent FROM TAG JOIN IMAGETAG ON IMAGETAG.tag = TAG.id JOIN IMAGE ON IMAGE.id = IMAGETAG.image WHERE IMAGE.local_path = ?;"
+    tags: List = db_copy.execute(query, db.Fetch.ALL, (self.__file_name_var.get(),))
     children = {}
     dict_of_dicts = {}
 
