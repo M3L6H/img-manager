@@ -220,7 +220,7 @@ class CTkListbox(CTkBaseClass):
     # Hide unused labels
     for i in range(len(self.labels)):
       if i >= len(self.values):
-        self.labels[i].pack_forget()
+        self.labels[i].grid_remove()
 
     self.canvas.configure(scrollregion=self.canvas.bbox("all"))
     self.canvas.update()
