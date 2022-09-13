@@ -1,18 +1,19 @@
 import math
 import warnings
+from customtkinter import CTkScrollbar
 import tkinter as tk
 
 from tkinter import ttk
 from PIL import Image, ImageTk
 
-class AutoScrollbar(ttk.Scrollbar):
+class AutoScrollbar(CTkScrollbar):
   """ A scrollbar that hides itself if it's not needed. Works only for grid geometry manager """
   def set(self, lo, hi):
     if float(lo) <= 0.0 and float(hi) >= 1.0:
       self.grid_remove()
     else:
       self.grid()
-      ttk.Scrollbar.set(self, lo, hi)
+      super().set(lo, hi)
 
   def pack(self, **kw):
     raise tk.TclError('Cannot use pack with the widget ' + self.__class__.__name__)
@@ -36,17 +37,18 @@ class CanvasImage:
     self.__imageid = None
     self.__pyramid = []
     # Vertical and horizontal scrollbars for canvas
-    hbar = AutoScrollbar(self.__imframe, orient='horizontal')
-    vbar = AutoScrollbar(self.__imframe, orient='vertical')
-    hbar.grid(row=1, column=0, sticky='we')
-    vbar.grid(row=0, column=1, sticky='ns')
+    self.hbar = AutoScrollbar(self.__imframe, orientation='horizontal')
+    self.vbar = AutoScrollbar(self.__imframe, orientation='vertical')
+    self.hbar.grid(row=1, column=0, sticky='we')
+    self.vbar.grid(row=0, column=1, sticky='ns')
     # Create canvas and bind it with scrollbars. Public for outer classes
     self.canvas = tk.Canvas(self.__imframe, highlightthickness=0,
-                xscrollcommand=hbar.set, yscrollcommand=vbar.set)
+                xscrollcommand=self.__hset, yscrollcommand=self.__vset)
     self.canvas.grid(row=0, column=0, sticky='nswe')
     self.canvas.update()  # wait till canvas is created
-    hbar.configure(command=self.__scroll_x)  # bind scrollbars to the canvas
-    vbar.configure(command=self.__scroll_y)
+    self.canvas.configure(cursor="arrow")
+    self.hbar.configure(command=self.__scroll_x)  # bind scrollbars to the canvas
+    self.vbar.configure(command=self.__scroll_y)
     # Bind events to the Canvas
     self.canvas.bind('<ButtonPress-1>', self.__move_from)  # remember canvas position
     self.canvas.bind('<B1-Motion>',   self.__move_to)  # move canvas to the new position
@@ -62,6 +64,7 @@ class CanvasImage:
 
       if path is None:
         self.canvas.delete("all")
+        self.canvas.configure(cursor="arrow")
         self.__close()
       else:
         # Decide if this image huge or not
@@ -99,7 +102,8 @@ class CanvasImage:
         self.container = self.canvas.create_rectangle((0, 0, self.imwidth * self.imscale, self.imheight * self.imscale), width=0)
         self.__show_image()  # show image on the canvas
         self.canvas.focus_set()  # set focus on the canvas
-        self.canvas.bind('<Configure>', lambda event: self.__show_image())  # canvas is resized
+        self.canvas.configure(cursor="fleur")
+        self.canvas.bind('<Configure>', lambda _: self.__show_image())  # canvas is resized
 
     if "bg" in kwargs:
       self.canvas.configure(bg=kwargs.pop("bg"))
@@ -172,6 +176,7 @@ class CanvasImage:
 
   def __show_image(self):
     """ Show image on the Canvas. Implements correct image zoom almost like in Google Maps """
+    if self.__image is None: return
     if self.__imageid:
       self.canvas.delete(self.__imageid)
       self.__imageid = None
@@ -181,6 +186,8 @@ class CanvasImage:
             self.canvas.canvasx(self.canvas.winfo_width()),
             self.canvas.canvasy(self.canvas.winfo_height()))
     box_img_int = tuple(map(int, box_image))  # convert to integer or it will not work properly
+    if len(box_img_int) == 0: return
+
     # Get scroll region box
     box_scroll = [min(box_img_int[0], box_canvas[0]), min(box_img_int[1], box_canvas[1]),
             max(box_img_int[2], box_canvas[2]), max(box_img_int[3], box_canvas[3])]
@@ -279,9 +286,22 @@ class CanvasImage:
       return self.__pyramid[0].crop(bbox)
 
   def __close(self):
-    if self.__image:
+    if self.__image is not None:
       self.__image.close()
+      self.__image = None
     map(lambda i: i.close, self.__pyramid)  # close all pyramid images
+
+  def __hset(self, *args):
+    if self.__image is None:
+      self.hbar.set(0, 1)
+    else:
+      self.hbar.set(*args)
+
+  def __vset(self, *args):
+    if self.__image is None:
+      self.vbar.set(0, 1)
+    else:
+      self.vbar.set(*args)
 
   def destroy(self):
     """ ImageFrame destructor """

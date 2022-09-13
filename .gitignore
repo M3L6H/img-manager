@@ -1,4 +1,6 @@
 .vscode/
+
+*.journal
 *.sqlite
 *.session.sql
 pwords.txt

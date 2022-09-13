@@ -1,10 +1,12 @@
-from typing import Dict, Generic, List, Optional, Tuple, TypeVar
+from typing import Any, Dict, ForwardRef, Generic, List, Optional, Tuple, TypeVar, Union
 
 import datetime
 import enum
 import inspect
 import re
 import sqlite3
+
+import utils
 
 class Fetch(enum.Enum):
   NONE = 0
@@ -19,30 +21,66 @@ class Type(enum.Enum):
   TIMESTAMP = 4
 
 class Field:
-  def __init__(self, name: str, field_type: Type = Type.INTEGER, nonnull: bool = False, references: str = "", primarykey: bool = False):
+  def __init__(self,
+    name: str,
+    field_type: Type=Type.INTEGER,
+    nonnull: bool=False,
+    references: str=None,
+    index: bool=False,
+    unique: Union[bool, List[str]]=False,
+    primarykey: bool=False
+  ):
     if not re.match(r"[_a-z]+", name):
       raise ValueError(f"Invalid name {name}")
 
-    if len(references) > 0 and not re.match(r"[_a-z]+ \([_a-z]+\)", str):
-      raise ValueError(f"Expected references with format 'table (field)', got {references}")
+    if references is not None and not re.match(r"[_A-Z]+ \([_a-z]+\)", references):
+      raise ValueError(f"Expected references with format 'TABLE (field)', got {references}")
 
-    self.__name = name
+    self.name = name
     self.__type = field_type
     self.__nonnull = nonnull
-    self.__primarykey = primarykey
     self.__references = references
+    self.__index = index
+    self.__unique = unique
+    self.__primarykey = primarykey
+
+  def get_index(self) -> str:
+    '''
+    Returns a template string with the command to create an index for this
+    Field
+    '''
+    if self.__index:
+      index_name = f"{self.name}_index_{utils.unsafe_random_str()}"
+      return f"CREATE INDEX {index_name} ON {{}} ({self.name});"
+    return ""
 
   def get_reference(self) -> str:
-    if len(self.__references) == 0: return ""
+    if self.__references is None: return ""
 
-    return f"FOREIGN KEY ({self.__name}) REFERENCES {self.__references}"
+    return f"FOREIGN KEY ({self.name}) REFERENCES {self.__references}"
+
+  def get_unique(self) -> str:
+    '''
+    Returns a string with the required command to create a unique constraint on
+    this field.
+    '''
+    if isinstance(self.__unique, list):
+      return "UNIQUE({})".format(", ".join(self.__unique))
+
+    if self.__unique:
+      return f"UNIQUE({self.name})"
+
+    return ""
 
   def is_primary(self) -> bool:
     return self.__primarykey
 
+  def set_unique(self, unique: Union[bool, List[str]]) -> None:
+    self.__unique = unique
+
   def to_str(self) -> str:
     fields = []
-    fields.append(self.__name)
+    fields.append(self.name)
     if self.__primarykey:
       fields.append("INTEGER PRIMARY KEY AUTOINCREMENT")
     else:
@@ -52,10 +90,32 @@ class Field:
 
     return " ".join(fields)
 
+  def __repr__(self):
+    return self.to_str()
+
+  def __str__(self):
+    return self.to_str()
+
 SCHEMA: Dict[str, List[Field]] = {}
 T = TypeVar("T")
 
 class ForeignKey(Generic[T]):
+  '''
+  Wrapper for a foreign key into another table. The inner type should be the
+  class name of the model. Should be the innermost wrapper.
+  '''
+  pass
+
+class Index(Generic[T]):
+  '''
+  Wrapper to indicate an index should be created on this column.
+  '''
+  pass
+
+class Unique(Generic[T]):
+  '''
+  Wrapper to create a unique constraint on a column.
+  '''
   pass
 
 TYPE_MAP = {
@@ -83,13 +143,24 @@ class DB:
   def copy(db):
     return DB(db.path, db.verbose)
 
+  @staticmethod
+  def quote(val: any) -> any:
+    if isinstance(val, str):
+      val = val.replace("'", "''")
+      return f"'{val}'"
+
+    if isinstance(val, datetime.datetime):
+      return f"'{str(val)}'"
+
+    return val
+
   def __init__(self, path: str, verbose: bool = False):
     self.path = path
     self.__connection = DB.connect(path, verbose)
     self.verbose = verbose
 
   def count(self, table: str) -> int:
-    return self.__execute(f"SELECT COUNT(1) FROM {table}", Fetch.ONE)[0]
+    return self.execute(f"SELECT COUNT(1) FROM {table}", Fetch.ONE)[0]
 
   def create_table(self, name: str, fields: List[Field]):
     name = name.upper()
@@ -106,7 +177,8 @@ class DB:
 
     query = f"CREATE TABLE {name} (\n"
     pkey = False
-    references = " ".join(filter(lambda x: len(x) > 0, [f.get_reference() for f in fields]))
+    references = ",\n".join(filter(lambda x: len(x) > 0, [f.get_reference() for f in fields]))
+    uniques = ",\n".join([f.get_unique() for f in fields if len(f.get_unique()) > 0])
     for i in range(len(fields)):
       field = fields[i]
 
@@ -119,12 +191,18 @@ class DB:
         pkey = True
 
       query += field.to_str()
-      if len(references) > 0 or i < len(fields) - 1:
+      if len(references) > 0 or len(uniques) > 0 or i < len(fields) - 1:
         query += ","
       query += "\n"
     if len(references) > 0:
-      query += references + "\n"
+      query += references
+      if len(uniques) > 0:
+        query += ","
+      query += "\n"
+    if len(uniques) > 0:
+      query += uniques + "\n"
     query += ");"
+    queries = [query]
 
     if not pkey:
       if updating:
@@ -132,7 +210,9 @@ class DB:
         self.__connection.commit()
       raise ValueError("Table requires one field to be marked as a primary key")
 
-    self.__execute(query)
+    queries.extend([f.get_index().format(name) for f in fields if len(f.get_index()) > 0])
+
+    self.execute(queries)
 
     if updating:
       self.__copy_data(temp_name, name)
@@ -140,12 +220,16 @@ class DB:
 
     self.__connection.commit()
 
+  def delete(self, table: str, id: int):
+    self.execute(f"DELETE FROM {table} WHERE id = ?;", Fetch.NONE, (id,))
+    self.__connection.commit()
+
   def disconnect(self):
     if self.verbose:
       print("Disconnecting from db")
     self.__connection.close()
 
-  def insert(self, table: str, data: Dict[str, any]) -> None:
+  def insert(self, table: str, data: Dict[str, any]) -> int:
     table = table.upper()
     columns = ",".join(data.keys())
     entries = []
@@ -153,25 +237,26 @@ class DB:
       if isinstance(v, list):
         if len(entries) > 0:
           for i in range(len(v)):
-            entries[i].append(self.__quote(v[i]))
+            entries[i].append(DB.quote(v[i]))
         else:
           for val in v:
-            entries.append([self.__quote(val)])
+            entries.append([DB.quote(val)])
       else:
         if len(entries) > 0:
-          entries[0].append(self.__quote(v))
+          entries[0].append(DB.quote(v))
         else:
-          entries.append([self.__quote(v)])
+          entries.append([DB.quote(v)])
 
     for i in range(len(entries)):
-      entries[i] = "(" + ",".join(entries[i]) + ")"
+      entries[i] = "(" + ",".join(["NULL" if e is None else str(e) for e in entries[i]]) + ")"
 
     entries = ",".join(entries)
 
-    self.__execute(f"INSERT INTO {table} ({columns}) VALUES {entries};")
+    res_id = self.execute(f"INSERT INTO {table} ({columns}) VALUES {entries};")
     self.__connection.commit()
+    return res_id
 
-  def query_one(self, table: str, id: int = None, **kwargs):
+  def query_one(self, table: str, id: int=None, **kwargs):
     return self.__query(table, Fetch.ONE, id, **kwargs)
 
   def query_all(self, table: str, limit: int=50, offset: int=0, **kwargs):
@@ -190,90 +275,129 @@ class DB:
   def __copy_data(self, from_table: str, to_table: str) -> None:
     if self.verbose:
       print(f"Copying data from table {from_table} to {to_table}")
-    self.__execute(f"INSERT INTO {to_table} SELECT * FROM {from_table};")
+    self.execute(f"INSERT INTO {to_table} SELECT * FROM {from_table};")
 
   def __drop_table(self, table: str) -> None:
     if self.verbose:
       print(f"Dropping {table}")
-    self.__execute(f"DROP TABLE IF EXISTS {table};")
+    self.execute(f"DROP TABLE IF EXISTS {table};")
 
-  def __execute(self, query: str, fetch: Fetch=Fetch.NONE, params: Tuple[any]=()) -> any:
+  def execute(self, query: Union[str, List[str]], fetch: Fetch=Fetch.NONE, params: Tuple[any]=()) -> any:
     if not self.__connection:
       raise RuntimeError("Not connected to DB")
 
     cursor = self.__connection.cursor()
 
-    try:
-      res = cursor.execute(query, params)
-      if self.verbose:
-        print(f"Executing: {query}")
+    if isinstance(query, str):
+      query = [query]
 
+    data = []
+
+    for q in query:
+      try:
+        if self.verbose:
+          print(f"Executing: {q}")
+        res = cursor.execute(q, params)
+
+        if fetch == Fetch.ONE:
+          data.append(res.fetchone())
+        elif fetch == Fetch.ALL:
+          data.append(res.fetchall())
+        elif fetch == Fetch.NONE:
+          data.append(cursor.lastrowid)
+
+      except sqlite3.Error as e:
+        print(f"Failed to execute {q} due to {e}")
+
+    cursor.close()
+
+    if len(data) == 0:
       data = None
-      if fetch == Fetch.ONE:
-        data = res.fetchone()
-      elif fetch == Fetch.ALL:
-        data = res.fetchall()
+    elif len(data) == 1:
+      data = data[0]
 
-      cursor.close()
-      return data
-    except sqlite3.Error as e:
-      print(f"Failed to execute {query} due to {e}")
+    return data
 
   def __get_tables(self) -> List[str]:
-    res = self.__execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
+    res = self.execute("SELECT name FROM sqlite_master WHERE type='table';", Fetch.ALL)
     return [entry[0] for entry in res]
 
   def __query(self, table: str, fetch: Fetch, id: int=None, limit: int=None, offset: int=None, **kwargs) -> any:
     table = table.upper()
     if id:
-      return self.__execute(f"SELECT * FROM {table} WHERE id=?", fetch, (id,))
+      return self.execute(f"SELECT * FROM {table} WHERE id=?", fetch, (id,))
     elif kwargs:
-      query = f"SELECT * FROM {table} WHERE"
+      query = f"SELECT * FROM {table}"
+      conditions = []
       for k in kwargs:
         if kwargs[k] != "*":
-          query += f" {k}=?"
+          conditions.append(f" {k}=?")
         else:
-          query += f" {k} IS NOT NULL AND {k}!=?"
+          conditions.append(f" {k} IS NOT NULL AND {k}!=?")
+      if len(conditions) > 0:
+        query += " WHERE" + " AND".join(conditions)
       if limit:
         query += f" LIMIT {limit}"
       if offset:
         query += f" OFFSET {offset}"
-      return self.__execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
+      return self.execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
 
-    return self.__execute(f"SELECT * FROM {table}", fetch)
-
-  def __quote(self, val: any) -> any:
-    if isinstance(val, str):
-      val = val.replace("'", "''")
-      return f"'{val}'"
-
-    if isinstance(val, datetime.datetime):
-      return f"'{str(val)}'"
-
-    return val
+    return self.execute(f"SELECT * FROM {table}", fetch)
 
   def __rename_table(self, old_name: str, new_name: str):
     if self.verbose:
       print(f"Renaming table {old_name} to {new_name}")
-    self.__execute(f"ALTER TABLE {old_name} RENAME TO {new_name};")
+    self.execute(f"ALTER TABLE {old_name} RENAME TO {new_name};")
 
   def __table_exists(self, table_name: str) -> bool:
-    return self.__execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", Fetch.ONE, (table_name,)) != None
+    return self.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", Fetch.ONE, (table_name,)) != None
+
+def unwrap_annotation(annotation: Any) -> Tuple[Type, Dict[str, any]]:
+  if "__args__" not in dir(annotation):
+    if hasattr(annotation, "__name__") and annotation.__name__ in TYPE_MAP:
+      return (TYPE_MAP[annotation.__name__], {})
+    else:
+      return (None, {})
+
+  if re.match(r"^\w*\.?Index\[.*\]$", str(annotation)):
+    t, flags = unwrap_annotation(annotation.__args__[0])
+    flags["index"] = True
+    return (t, flags)
+
+  if re.match(r"^\w*\.?Unique\[.*\]$", str(annotation)):
+    t, flags = unwrap_annotation(annotation.__args__[0])
+    flags["unique"] = True
+    return (t, flags)
+
+  if re.match(r"^\w*\.?ForeignKey\[.*\]$", str(annotation)):
+    _, flags = unwrap_annotation(annotation.__args__[0])
+    ref = annotation.__args__[0]
+    ref = ref.__forward_arg__ if isinstance(ref, ForwardRef) else ref.__name__
+    flags["ref"] = f"{ref.upper()} (id)"
+    return (Type.INTEGER, flags)
 
 def model(my_class):
   global SCHEMA
-  fields = [Field("id", primarykey=True)]
+  fields = [Field("id", index=True, primarykey=True)]
   params = inspect.signature(my_class.__init__).parameters
   table: str = my_class.__name__.upper()
+
+  if table in SCHEMA: return my_class
 
   for p in params:
     if p == "self":
       continue
     param = params[p]
     annotation = param.annotation
-    field_type = Type.INTEGER if re.match(r"__main__\.ForeignKey\[.*\]", str(annotation)) else TYPE_MAP[annotation.__name__]
-    ref = annotation.__args__[0].__name__ if re.match(r"__main__\.ForeignKey\[.*\]", str(annotation)) else ""
-    fields.append(Field(param.name, field_type, param.default == inspect.Parameter.empty, ref))
+    field_type, flags = unwrap_annotation(annotation)
+
+    create_index = "index" in flags
+    make_unique = "unique" in flags
+    ref = None
+    if "ref" in flags:
+      ref = flags["ref"]
+
+    fields.append(Field(param.name, field_type, param.default == inspect.Parameter.empty, ref, create_index, make_unique))
 
   SCHEMA[table] = fields
 
@@ -294,12 +418,13 @@ def model(my_class):
   param_values = params.values()
 
   arg_str = ", ".join([p.name for p in param_values if p.name != "self"])
-  param_str = ", ".join([str(p) for p in param_values if p.name != "self"])
+  param_str = ", ".join([p.name if p.default == inspect.Parameter.empty else f"{p.name}={DB.quote(p.default)}" for p in param_values if p.name != "self"])
 
   create_str = """
 def create(my_class, db, {params}):
   new_instance = my_class({args})
-  db.insert("{table}", new_instance.__dict__)
+  res = db.insert("{table}", new_instance.__dict__)
+  new_instance.id = res
   return new_instance
   """.format(args = arg_str, params = param_str, table = table)
   exec(create_str)
@@ -308,24 +433,61 @@ def create(my_class, db, {params}):
   def find_one(db: DB, **kwargs) -> List[my_class]:
     res = db.query_one(table, **kwargs)
     if res:
-      return my_class(*res[1:])
+      my_instance = my_class(*res[1:])
+      my_instance.id = res[0]
+      return my_instance
 
   my_class.find_one = find_one
 
   def find_all(db: DB, **kwargs) -> List[my_class]:
     res = db.query_all(table, **kwargs)
-    return [my_class(*entry[1:]) for entry in res]
+    entries = [my_class(*entry[1:]) for entry in res]
+    for i, entry in enumerate(res):
+      entries[i].id = entry[0]
+    return entries
 
   my_class.find_all = find_all
 
   def find_by_id(db: DB, id: int) -> Optional[my_class]:
     res = db.query_one(table, id)
     if res:
-      return my_class(*res[1:])
+      my_instance = my_class(*res[1:])
+      my_instance.id = res[0]
+      return my_instance
 
   my_class.find_by_id = find_by_id
 
+  def delete(self, db: DB) -> None:
+    db.delete(table, self.id)
+
+  my_class.delete = delete
+
+  def delete_by_id(db: DB, id: int) -> None:
+    db.delete(table, id)
+
+  my_class.delete_by_id = delete_by_id
+
   return my_class
+
+def unique(*args):
+  def wrapped_fn(my_class):
+    if len(args) == 0: return
+
+    global SCHEMA
+    table: str = my_class.__name__.upper()
+
+    if table not in SCHEMA:
+      my_class = model(my_class)
+
+    fields = SCHEMA[table]
+
+    for field in fields:
+      if field.name == args[0]:
+        field.set_unique(list(args))
+
+    return my_class
+
+  return wrapped_fn
 
 def classwrapper(my_class, myfn):
   def wrapper(*args, **kwargs):
