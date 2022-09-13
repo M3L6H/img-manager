@@ -169,9 +169,9 @@ class MainWindow(customtkinter.CTk):
       justify=tkinter.LEFT
     )
     self.__file_name.grid(row=0, column=1, padx=10, sticky="nswe")
+    self.__file_name.grid_propagate(False)
 
-    # self.__tag_entry = customtkinter.CTkEntry(
-    self.__tag_entry = tkinter.Entry(
+    self.__tag_entry = customtkinter.CTkEntry(
       master=self.__frame_header,
       textvariable=self.__tag_var,
       state=tkinter.DISABLED,
@@ -180,6 +180,7 @@ class MainWindow(customtkinter.CTk):
       validatecommand=(self.register(self.validate_tag_entry), "%P"),
       invalidcommand=(self.register(lambda : print("Invalid called")),)
     )
+    self.__tag_entry.bind("<Return>", lambda _: self.add_tag())
     self.__tag_entry.grid(row=0, column=2, sticky="nswe")
 
     self.__frame_body = customtkinter.CTkFrame(
@@ -192,10 +193,6 @@ class MainWindow(customtkinter.CTk):
 
     self.__collapsible = widgets.Collapsible(
       master=self.__frame_body,
-      children={
-        "1": ("clothes", { "2": ("underwear", { "3": ("panties", { "4": ("thong", {}) }) }) }),
-        "5": ("people", { "6": ("f", {}) })
-      },
       delete_command=lambda id: print(id),
       id="0",
       root=True,
@@ -205,6 +202,39 @@ class MainWindow(customtkinter.CTk):
 
     # ===== LOAD DATA =====
     self.load_data()
+
+  def add_tag(self):
+    thread = threading.Thread(target=self.__add_tag_task)
+    thread.start()
+    self.focus()
+    self.__tag_entry.configure(state=tkinter.DISABLED, cursor="arrow")
+
+  def __add_tag_task(self):
+    db_copy = db.DB.copy(self.__my_db)
+    image = models.Image.find_one(db_copy, local_path=self.__file_name_var.get())
+    new_children = self.__collapsible.get_dict()
+    tag_dict = new_children
+    tags = self.__tag_var.get().split(":")
+    prev_tag = None
+
+    for i, tag_text in enumerate(tags):
+      tag = models.Tag.find_one(db_copy, name=tag_text, parent=None if prev_tag is None else prev_tag.id)
+
+      if tag is None:
+        tag = models.Tag.create(db_copy, name=tag_text, parent=None if i == 0 else prev_tag.id)
+
+      prev_tag = tag
+
+      level = tag_dict[tag.id] if tag.id in tag_dict else (tag.name, {})
+      tag_dict[tag.id] = level
+      tag_dict = level[1]
+
+      models.ImageTag.create(db_copy, image=image.id, tag=tag.id)
+
+    self.__collapsible.configure(children=new_children)
+    self.__tag_var.set("")
+    self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm", validate=tkinter.ALL)
+    self.__tag_entry.focus()
 
   def disable_pagination(self):
     self.__first_page.configure(state=tkinter.DISABLED)
@@ -268,11 +298,41 @@ class MainWindow(customtkinter.CTk):
   def load_media(self, local_path: str=None):
     if local_path:
       self.__file_name_var.set(local_path)
+      thread = threading.Thread(target=self.__load_media_task)
+      thread.start()
       self.__open_in_explorer.configure(cursor="hand2")
-      self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
       self.__media_widget.configure(file=local_path)
     else:
+      self.__open_in_explorer.configure(cursor="arrow")
       self.__tag_entry.configure(state=tkinter.DISABLED, cursor="arrow")
+
+  def __load_media_task(self):
+    db_copy = db.DB.copy(self.__my_db)
+    query = f"SELECT TAG.id, TAG.name, TAG.parent FROM TAG JOIN IMAGETAG ON IMAGETAG.tag == TAG.id JOIN IMAGE ON IMAGE.id == IMAGETAG.image WHERE IMAGE.local_path == '{self.__file_name_var.get()}';"
+    tags: List = db_copy.execute(query, db.Fetch.ALL)
+    children = {}
+    dict_of_dicts = {}
+
+    i = 0
+
+    while i < len(tags):
+      tag = tags[i]
+      id, name, parent = tag
+      dict_of_dicts[id] = {}
+
+      if parent is None:
+        children[id] = (name, dict_of_dicts[id])
+      elif parent in dict_of_dicts:
+        dict_of_dicts[parent][id] = (name, dict_of_dicts[id])
+      else:
+        tags.append(tag)
+
+      i += 1
+
+    self.__collapsible.configure(children=children)
+    self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
+    self.__tag_entry.focus()
+
 
   def max_page(self) -> int:
     if self.__max_page == None:
@@ -319,7 +379,7 @@ class MainWindow(customtkinter.CTk):
     elif re.match(r"^[-:a-z0-9]*;$", value):
       self.__tag_var.set(self.__tag_var.get() + ":")
 
-    self.__tag_entry.icursor(len(self.__tag_var.get()))
+    self.__tag_entry.entry.icursor(len(self.__tag_var.get()))
     self.__tag_entry.after_idle(lambda: self.__tag_entry.configure(validate=tkinter.ALL))
 
     return False

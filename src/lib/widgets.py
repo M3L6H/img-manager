@@ -1,12 +1,15 @@
 from typing import Callable, Dict, List, Tuple, Union
 
 from canvas_image import CanvasImage
+import copy
 import enum
 from customtkinter import CTkBaseClass, CTkButton, CTkFrame, CTkLabel, CTkScrollbar, DrawEngine, ThemeManager
 import pathlib
 from PIL import Image, UnidentifiedImageError
 import tkinter
 import vlc
+
+Image.MAX_IMAGE_PIXELS = None
 
 HOME = pathlib.Path.home()
 IMAGE_DIR = HOME.joinpath(".img-manager", "images")
@@ -424,6 +427,9 @@ class Collapsible(CTkBaseClass):
     for i in range(len(self.__child_collapsibles)):
       if i >= len(self.__children):
         self.__child_collapsibles[i].destroy()
+
+  def get_dict(self) -> Dict[str, Tuple[str, Dict]]:
+    return copy.deepcopy(self.__children)
 
   def toggle_state(self):
     if self.__state == CollapsibleState.COLLAPSED:
