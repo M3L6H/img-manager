@@ -269,7 +269,7 @@ class CTkListbox(CTkBaseClass):
         label = self.labels[i]
         label.configure(state=tkinter.ACTIVE, cursor="arrow")
 
-        if self.selected:
+        if self.selected is not None:
           self.labels[self.selected].configure(state=tkinter.NORMAL, cursor="hand2")
 
         self.selected = i
@@ -652,6 +652,7 @@ class VideoPlayer(CTkBaseClass):
     e_manager.event_attach(vlc.EventType.MediaPlayerTimeChanged, lambda _: self.video_time_changed())
     e_manager.event_attach(vlc.EventType.MediaPlayerEndReached, lambda _: self.video_end())
 
+    self.bottom_frame.grid_remove()
     self.dest = None
     self.state = PlayerState.STOPPED
     self.verbose = verbose
@@ -663,12 +664,14 @@ class VideoPlayer(CTkBaseClass):
 
       file = kwargs.pop("file")
       try:
+        self.bottom_frame.grid_remove()
         self.dest = None
         im = Image.open(file)
         im.verify()
         self.img.configure(image=file)
         require_redraw = True
       except UnidentifiedImageError:
+        self.bottom_frame.grid()
         self.dest = file
         self.img.configure(image=None)
         self.play()
