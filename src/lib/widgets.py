@@ -522,6 +522,7 @@ class Collapsible(CTkBaseClass):
     for i in range(len(self.__child_collapsibles)):
       if i >= len(self.__children):
         self.__child_collapsibles[i].destroy()
+    self.__child_collapsibles = self.__child_collapsibles[:len(self.__children)]
 
   def __enter(self):
     self.__mousewheel_bind()
