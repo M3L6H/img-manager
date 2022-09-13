@@ -42,12 +42,6 @@ class MainWindow(customtkinter.CTk):
     self.update_page_var()
     self.__verbose = verbose
 
-    # ===== CREATE THREADS =====
-    self.t_max_page = threading.Thread(target=self.fetch_max_page)
-
-    # ===== RUN THREADS
-    self.t_max_page.start()
-
     # ===== CREATE FRAMES =====
 
     # Configure grid layout (2x2)
@@ -119,7 +113,8 @@ class MainWindow(customtkinter.CTk):
       text=None,
       image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("arrow-forward-icon.png")),
       width=28,
-      command=lambda : threading.Thread(target=self.next_page).start()
+      command=lambda : threading.Thread(target=self.next_page).start(),
+      state=tkinter.DISABLED
     )
     self.__next_page.grid(row=0, column=4)
 
@@ -128,7 +123,8 @@ class MainWindow(customtkinter.CTk):
       text=None,
       image=tkinter.PhotoImage(file=IMAGE_DIR.joinpath("last-page-icon.png")),
       width=28,
-      command=lambda : threading.Thread(target=self.last_page).start()
+      command=lambda : threading.Thread(target=self.last_page).start(),
+      state=tkinter.DISABLED
     )
     self.__last_page.grid(row=0, column=5)
 
@@ -202,8 +198,12 @@ class MainWindow(customtkinter.CTk):
     self.__collapsible.grid(row=0, column=0, sticky="nswe", pady=10)
 
     # ===== LOAD DATA =====
+    self.max_page_t = threading.Thread(target=self.fetch_max_page)
+    self.max_page_t.start()
     self.load_data()
     self.update_autocomplete()
+
+    self.enable_pagination()
 
   def add_tag(self):
     thread = threading.Thread(target=self.__add_tag_task)
@@ -262,7 +262,7 @@ class MainWindow(customtkinter.CTk):
     if self.__page != 0:
       self.__first_page.configure(state=tkinter.NORMAL)
       self.__prev_page.configure(state=tkinter.NORMAL)
-    if self.__page != self.max_page():
+    if self.__page < self.max_page():
       self.__last_page.configure(state=tkinter.NORMAL)
       self.__next_page.configure(state=tkinter.NORMAL)
     self.__page_entry.configure(state=tkinter.NORMAL)
@@ -355,7 +355,7 @@ class MainWindow(customtkinter.CTk):
 
   def max_page(self) -> int:
     if self.__max_page == None:
-      self.t_max_page.join()
+      self.max_page_t.join()
     return self.__max_page
 
   def next_page(self):
