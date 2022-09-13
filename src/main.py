@@ -5,10 +5,12 @@ import argparse
 import customtkinter
 import os
 import pathlib
+import subprocess
 import sys
 
 HOME = pathlib.Path.home()
 DATA_DIR = HOME.joinpath(".img-manager")
+TEMPLATES_DIR = DATA_DIR.joinpath("templates")
 LAST_DB = DATA_DIR.joinpath(".last-db")
 LIB_DIR = DATA_DIR.joinpath("lib")
 THEME = DATA_DIR.joinpath("theme.json")
@@ -30,6 +32,10 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
     help="Add media to be managed by img-manager. Can be a single file or directory"
   )
   parser.add_argument(
+    "-d", "--download",
+    help="Download media based on a template. Specify the template to follow. Template should be present in the templates folder"
+  )
+  parser.add_argument(
     "--db",
     help="Specify path to db"
   )
@@ -37,6 +43,11 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
     "--gui",
     action="store_true",
     help="Launch the GUI"
+  )
+  parser.add_argument(
+    "--templates",
+    action="store_true",
+    help="Open the templates folder"
   )
   parser.add_argument(
     "--verbose",
@@ -77,6 +88,10 @@ def main(args: List[str]) -> None:
   validate_input(ns)
 
   verbose = ns.verbose
+
+  if ns.templates:
+    subprocess.Popen("explorer /select,\"{}\"".format(TEMPLATES_DIR.joinpath("example.xml")))
+    exit(0)
 
   # Connect to db
   my_db = db.DB(ns.db, verbose)

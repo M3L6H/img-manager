@@ -1,0 +1,20 @@
+<site root="https://example.com" authenticated="false">
+  <page url="/images?page={index}" start="1">
+    <entry regex="(?P<url>/photos/[^&quot;]+)&quot; class=&quot;o" enumerate="all">
+      <page url="{url}">
+        <entry regex="(?P<url>https[^&quot;]+)&quot; class=&quot;download" enumerate="0">
+          <action type="download" />
+        </entry>
+      </page>
+    </entry>
+  </page>
+  <page url="/videos?page={index}" start="1">
+    <entry regex="(?P<url>/videos/[^&quot;]+)&quot; class=&quot;p" enumerate="all">
+      <page url="{url}">
+        <entry regex="(?P<url>https[^&quot;]+)&quot; class=&quot;download" enumerate="0">
+          <action type="download" />
+        </entry>
+      </page>
+    </entry>
+  </page>
+</site>
