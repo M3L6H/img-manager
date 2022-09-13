@@ -173,14 +173,13 @@ class MainWindow(customtkinter.CTk):
     self.__file_name.grid(row=0, column=1, padx=10, sticky="nswe")
     self.__file_name.grid_propagate(False)
 
-    self.__tag_entry = customtkinter.CTkEntry(
+    self.__tag_entry = widgets.CTkAutocompleteEntry(
       master=self.__frame_header,
       textvariable=self.__tag_var,
       state=tkinter.DISABLED,
       cursor="arrow",
       validate=tkinter.ALL,
-      validatecommand=(self.register(self.validate_tag_entry), "%P"),
-      invalidcommand=(self.register(lambda : print("Invalid called")),)
+      validatecommand=(self.register(self.validate_tag_entry), "%P")
     )
     self.__tag_entry.bind("<Return>", lambda _: self.add_tag())
     self.__tag_entry.grid(row=0, column=2, sticky="nswe")
@@ -204,6 +203,7 @@ class MainWindow(customtkinter.CTk):
 
     # ===== LOAD DATA =====
     self.load_data()
+    self.update_autocomplete()
 
   def add_tag(self):
     thread = threading.Thread(target=self.__add_tag_task)
@@ -217,6 +217,7 @@ class MainWindow(customtkinter.CTk):
     new_children = self.__collapsible.get_dict()
     tag_dict = new_children
     tags = self.__tag_var.get().split(":")
+    tags = [t for t in tags if len(t) > 0]
     prev_tag = None
 
     for i, tag_text in enumerate(tags):
@@ -237,6 +238,7 @@ class MainWindow(customtkinter.CTk):
     self.__tag_var.set("")
     self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm", validate=tkinter.ALL)
     self.__tag_entry.focus()
+    self.update_autocomplete()
 
   def delete_image_tag(self, id):
     thread = threading.Thread(target=lambda id=id: self.__delete_image_tag_task(id))
@@ -247,6 +249,7 @@ class MainWindow(customtkinter.CTk):
     models.ImageTag.find_one(db_copy, image=self.__selected_image.id, tag=tag_id).delete(db_copy)
     if len(models.ImageTag.find_all(db_copy, tag=tag_id)) == 0:
       models.Tag.delete_by_id(db_copy, tag_id)
+    self.update_autocomplete()
 
   def disable_pagination(self):
     self.__first_page.configure(state=tkinter.DISABLED)
@@ -376,6 +379,40 @@ class MainWindow(customtkinter.CTk):
   def show(self):
     self.mainloop()
 
+  def update_autocomplete(self):
+    thread = threading.Thread(target=self.__update_autocomplete_task)
+    thread.start()
+
+  def __update_autocomplete_task(self):
+    db_copy = db.DB.copy(self.__my_db)
+    tags = models.Tag.find_all(db_copy)
+    tree = {}
+    dict_of_dicts = {}
+    id_to_tag = {}
+
+    for tag in tags:
+      id_to_tag[tag.id] = tag
+
+    for tag in tags:
+      if tag.id not in dict_of_dicts:
+        dict_of_dicts[tag.id] = {}
+
+      parent_chain = []
+      curr_tag = tag
+
+      while curr_tag.parent is not None:
+        curr_tag = id_to_tag[curr_tag.parent]
+        parent_chain.append(curr_tag.name)
+
+      curr_tree = tree
+      for parent in reversed(parent_chain):
+        curr_tree = curr_tree[parent]
+
+      curr_tree[tag.name] = dict_of_dicts[tag.id]
+
+    with threading.Lock():
+      self.__tag_entry.configure(tree=tree)
+
   def update_page_var(self):
     self.__page_var.set(str(self.__page + 1))
 
@@ -385,17 +422,25 @@ class MainWindow(customtkinter.CTk):
     return True
 
   def validate_tag_entry(self, value: str):
+    if re.match(r"^:.*$", value) or re.match(r"^[-:a-z0-9]*::$", value):
+      return False
+
     if re.match(r"^[-:a-z0-9]*$", value):
       return True
 
-    if re.match(r"^[-:a-z0-9]* $", value):
-      self.__tag_var.set(self.__tag_var.get() + "-")
-    elif re.match(r"^[-:a-z0-9]*[A-Z]$", value):
-      self.__tag_var.set(self.__tag_var.get() + value[-1].lower())
-    elif re.match(r"^[-:a-z0-9]*;$", value):
-      self.__tag_var.set(self.__tag_var.get() + ":")
+    index = self.__tag_entry.entry.index(tkinter.INSERT)
+    curr_value = self.__tag_var.get()
+    char = ""
 
-    self.__tag_entry.entry.icursor(len(self.__tag_var.get()))
+    if re.match(r"^[-:a-z0-9]* $", value):
+      char = "-"
+    elif re.match(r"^[-:a-z0-9]*[A-Z]$", value):
+      char = value[-1].lower()
+    elif re.match(r"^[-:a-z0-9]*[^:];$", value):
+      char = ":"
+
+    self.__tag_var.set(curr_value[:index] + char + curr_value[index:])
+    self.__tag_entry.entry.icursor(index + 1)
     self.__tag_entry.after_idle(lambda: self.__tag_entry.configure(validate=tkinter.ALL))
 
     return False
