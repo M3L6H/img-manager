@@ -75,7 +75,7 @@ class CTkAutocompleteEntry(CTkEntry):
 
     return "break"
 
-class CTkAutoScrollbar(tkinter.Scrollbar):
+class CTkAutoScrollbar(CTkScrollbar):
   def __init__(self, *args,
     side: str=tkinter.RIGHT,
     **kwargs
@@ -199,12 +199,14 @@ class CTkListbox(CTkBaseClass):
         ))
 
       self.labels[i].bind("<Button-1>", lambda _,i=i: self.clicked(i))
+      self.labels[i].bind("<Enter>", lambda _,i=i: self.__highlight(i))
+      self.labels[i].bind("<Leave>", lambda _,i=i: self.__unhighlight(i))
 
       if no_color_updates is False:
         self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
         if self.state == tkinter.DISABLED:
-          self.labels[i].configure(fg=(ThemeManager.single_color(self.text_color_disabled, self._appearance_mode)))
+          self.labels[i].configure(fg=ThemeManager.single_color(self.text_color_disabled, self._appearance_mode))
         else:
           self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
@@ -273,6 +275,15 @@ class CTkListbox(CTkBaseClass):
         self.selected = i
         self.command(id)
 
+  def __highlight(self, i: int):
+    self.labels[i].configure(bg=ThemeManager.single_color(self.active_color, self._appearance_mode))
+
+  def __unhighlight(self, i: int):
+    if i % 2 == 0:
+      self.labels[i].configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
+    else:
+      self.labels[i].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
+
   def update_canvas(self):
     self.canvas.configure(scrollregion=self.canvas.bbox("all"))
     self.canvas.xview_moveto(1.0)
@@ -324,7 +335,7 @@ class Collapsible(CTkBaseClass):
       cursor="hand2" if len(self.__children) > 0 else "arrow",
       fg_color=self.fg_color
     )
-    self.__header.grid(row=0, column=0, sticky="nswe")
+    self.__header.grid(row=0, column=0, columnspan=2, sticky="nswe")
     self.__header.grid_rowconfigure(0, weight=1)
 
     self.__caret_down_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("caret-down-icon.png"))
