@@ -13,23 +13,38 @@ import random
 import re
 import requests
 import string
+import time
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36"
 
 session = requests.Session()
 last_url = ""
 
-def download_file(url: str, target: pathlib.Path) -> pathlib.Path:
+def download_file(url: str, target: pathlib.Path, attempts=3) -> pathlib.Path:
+  """
+  Downloads a URL content into a file (with large file support by streaming)
+
+  :param url: URL to download
+  :param file_path: Local file name to contain the data downloaded
+  :param attempts: Number of attempts
+  :return: New file path. Empty string if the download failed
+  """
   local_filename = target.joinpath(url2filename(url))
-  with my_request(url, stream=True) as r:
-    r.raise_for_status()
-    with open(str(local_filename), 'wb') as f:
-      for chunk in r.iter_content(chunk_size=8192):
-        # If you have chunk encoded response uncomment if
-        # and set chunk_size parameter to None.
-        #if chunk:
-        f.write(chunk)
-  return local_filename
+  timeout = 2
+  for attempt in range(0, attempts):
+    if attempt > 0:
+      time.sleep(timeout * (2 ** attempt))
+
+    try:
+      with my_request(url, stream=True) as r:
+        r.raise_for_status()
+        with open(str(local_filename), 'wb') as f:
+          for chunk in r.iter_content(chunk_size=1024*1024):
+            f.write(chunk)
+      return local_filename
+    except Exception as e:
+      print(f"Attempt #{attempt + 1} failed with error: {e}")
+  return None
 
 def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, verbose: bool=False, **kwargs) -> requests.Response:
   '''
