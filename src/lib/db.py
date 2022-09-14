@@ -126,6 +126,9 @@ TYPE_MAP = {
   "datetime": Type.TIMESTAMP
 }
 
+class UniqueError(sqlite3.Error):
+  pass
+
 class DB:
   @staticmethod
   def connect(path: str, verbose=False) -> sqlite3.Connection:
@@ -307,7 +310,12 @@ class DB:
           data.append(cursor.lastrowid)
 
       except sqlite3.Error as e:
-        print(f"Failed to execute {q} due to {e}")
+        msg = f"Failed to execute {q} due to {e}"
+
+        if "UNIQUE constraint failed" in e:
+          raise UniqueError(msg)
+
+        raise sqlite3.Error(msg)
 
     cursor.close()
 
