@@ -266,6 +266,8 @@ class DB:
     return self.__query(table, Fetch.ALL, None, limit, offset, **kwargs)
 
   def update_schema(self):
+    utils.rolling_backup(self.path, count=5)
+
     # Create tables in schema
     for table in SCHEMA:
       self.create_table(table, SCHEMA[table])

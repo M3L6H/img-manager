@@ -1,6 +1,7 @@
 from typing import Dict, List, Set, Tuple
 
 import certifi
+import glob
 import os
 import pathlib
 import posixpath
@@ -8,6 +9,7 @@ import pycurl
 import random
 import re
 import requests
+import shutil
 import string
 import time
 from urllib.parse import urlsplit, unquote
@@ -110,6 +112,17 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
     print(f"Error while trying to access '{url}'")
 
   return r
+
+def rolling_backup(path: str, count: int=10):
+  backups = glob.glob(path + "-backup*")
+  if len(backups) == 0:
+    shutil.copyfile(path, path + "-backup")
+  elif len(backups) < count:
+    shutil.copyfile(path, path + "-backup" + f"-{len(backups)}")
+  else:
+    backups = sorted(backups, key=lambda t: os.stat(t).st_mtime)
+    os.remove(backups[0])
+    shutil.copyfile(path, backups[0])
 
 def search_dir(dir: pathlib.Path, suffixes: Set[str]) -> List[pathlib.Path]:
   return [p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes]

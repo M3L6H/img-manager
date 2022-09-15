@@ -141,7 +141,7 @@ def main(args: List[str]) -> None:
     exit(0)
 
   # Connect to db
-  my_db = db.DB(ns.db, verbose)
+  my_db = db.DB(str(ns.db), verbose)
   my_db.update_schema()
 
   # Run operation
