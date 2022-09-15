@@ -73,17 +73,17 @@ def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool
         raise RuntimeError(f"No download scheme supplied")
       return local_filename
     except Exception as e:
-      print(f"Attempt #{attempt + 1} failed with error: {e}")
+      print(f"\nAttempt #{attempt + 1} failed with error: {e}")
     finally:
       if "libcurl" in kwargs and kwargs["libcurl"]:
         c.close()
   return None
 
 def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, verbose: bool=False, **kwargs) -> requests.Response:
-  '''
+  """
   Wrapper arround requests to make a session-backed request with some default
   headers.
-  '''
+  """
   global last_url
 
   if url is None:
@@ -114,6 +114,10 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
   return r
 
 def rolling_backup(path: str, count: int=10):
+  """
+  Creates up to count backups of path. Starts rolling over once the count is
+  exceeded.
+  """
   backups = glob.glob(path + "-backup*")
   if len(backups) == 0:
     shutil.copyfile(path, path + "-backup")
@@ -128,10 +132,10 @@ def search_dir(dir: pathlib.Path, suffixes: Set[str]) -> List[pathlib.Path]:
   return [p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes]
 
 def substitute(template: str, match: Tuple[str]) -> str:
-  '''
+  """
   Substitutes {0} patterns in the template string with the corresponding entry
   in the match tuple.
-  '''
+  """
   pattern = re.compile("\{(\d+)\}")
   substituted = template
 
@@ -143,10 +147,10 @@ def substitute(template: str, match: Tuple[str]) -> str:
   return substituted
 
 def unsafe_random_str(k: int=8, options: str=string.ascii_lowercase+string.digits) -> str:
-  '''
+  """
   Generates a cryptographically insecure string of length k by choosing
   randomly from the characters in options.
-  '''
+  """
   return "".join(random.choices(options, k=k))
 
 def url2filename(url):

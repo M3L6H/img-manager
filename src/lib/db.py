@@ -45,10 +45,10 @@ class Field:
     self.__primarykey = primarykey
 
   def get_index(self) -> str:
-    '''
+    """
     Returns a template string with the command to create an index for this
     Field
-    '''
+    """
     if self.__index:
       index_name = f"{self.name}_index_{utils.unsafe_random_str()}"
       return f"CREATE INDEX {index_name} ON {{}} ({self.name});"
@@ -60,10 +60,10 @@ class Field:
     return f"FOREIGN KEY ({self.name}) REFERENCES {self.__references}"
 
   def get_unique(self) -> str:
-    '''
+    """
     Returns a string with the required command to create a unique constraint on
     this field.
-    '''
+    """
     if isinstance(self.__unique, list):
       return "UNIQUE({})".format(", ".join(self.__unique))
 
@@ -100,22 +100,22 @@ SCHEMA: Dict[str, List[Field]] = {}
 T = TypeVar("T")
 
 class ForeignKey(Generic[T]):
-  '''
+  """
   Wrapper for a foreign key into another table. The inner type should be the
   class name of the model. Should be the innermost wrapper.
-  '''
+  """
   pass
 
 class Index(Generic[T]):
-  '''
+  """
   Wrapper to indicate an index should be created on this column.
-  '''
+  """
   pass
 
 class Unique(Generic[T]):
-  '''
+  """
   Wrapper to create a unique constraint on a column.
-  '''
+  """
   pass
 
 TYPE_MAP = {
