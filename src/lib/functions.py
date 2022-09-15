@@ -150,7 +150,12 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
       print(f"\nEncountered error {e} while trying to extract {file}. Continue? (y/N)")
       if msvcrt.getch().lower() != b"y":
         exit(1)
-    os.remove(file)
+    while True:
+      try:
+        os.remove(file)
+        break
+      except PermissionError:
+        pass
     if verbose:
       print("Extracted file")
     return target_path
