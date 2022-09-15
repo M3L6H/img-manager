@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 
 import db
 import models
+import msvcrt
 import re
 import requests
 import utils
@@ -43,7 +44,7 @@ class AuthenticationException(Exception):
 class TemplateException(Exception):
   pass
 
-def download(my_db: db.DB, template: pathlib.Path, location: pathlib.Path, username: str=None, password: str=None, verbose: bool=False) -> None:
+def download(my_db: db.DB, template: pathlib.Path, location: pathlib.Path, username: str=None, password: str=None, verbose: bool=False, **kwargs) -> None:
   db_copy = db.DB.copy(my_db)
   data_dir = DATA_DIR.joinpath(template.stem)
 
@@ -92,7 +93,7 @@ def download(my_db: db.DB, template: pathlib.Path, location: pathlib.Path, usern
     raise TemplateException("<site> tag missing required attribute: root")
 
   for page in root:
-    parse_page(page, root.attrib["root"], username=username, password=password, location=location, my_db=db_copy, verbose=verbose)
+    parse_page(page, root.attrib["root"], username=username, password=password, location=location, my_db=db_copy, verbose=verbose, **kwargs)
 
 def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool=False, **kwargs) -> Optional[pathlib.Path]:
   if action.tag == "page":
@@ -118,7 +119,8 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
       raise RuntimeError("Delete <action> requires an action result. Is an extract action missing?")
     directory: pathlib.Path = kwargs["action_res"]
     if not os.path.isdir(directory):
-      raise RuntimeError(f"Delete <action> requires a directory as an action result. Got {directory}")
+      print(f"WARN: {directory} is not a valid directory")
+      return None
     count = 0
     for _, _, files in os.walk(directory):
       for f in files:
@@ -132,7 +134,7 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
     if "url" not in action.attrib:
       raise TemplateException("Download <action> tag missing required attribute: url")
     url = utils.substitute(action.attrib["url"], match)
-    file = utils.download_file(url, kwargs["location"], verbose=verbose)
+    file = utils.download_file(url, kwargs["location"], verbose=verbose, **kwargs)
     if verbose:
       print(f"Downloaded {file}")
     return file
@@ -141,8 +143,13 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
       raise RuntimeError("Extract <action> requires an action result. Is a download action missing?")
     file: pathlib.Path = kwargs["action_res"]
     target_path = file.resolve().parent.joinpath(file.stem)
-    with zipfile.ZipFile(str(file), "r") as zip_ref:
-      zip_ref.extractall(str(target_path))
+    try:
+      with zipfile.ZipFile(str(file), "r") as zip_ref:
+        zip_ref.extractall(str(target_path))
+    except zipfile.BadZipFile as e:
+      print(f"\nEncountered error {e} while trying to extract {file}. Continue? (y/N)")
+      if msvcrt.getch().lower() != b"y":
+        exit(1)
     os.remove(file)
     if verbose:
       print("Extracted file")

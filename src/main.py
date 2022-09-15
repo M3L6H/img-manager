@@ -61,7 +61,7 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
   )
   parser.add_argument(
     "--use",
-    help="Specify a downloading scheme to use. Accepted values are libcurl and urllib"
+    help="Specify a downloading scheme to use. Accepted values are libcurl, requests, and urllib. Defaults to libcurl"
   )
   parser.add_argument(
     "--username",
@@ -115,9 +115,11 @@ def validate_input(ns: argparse.Namespace) -> None:
     ns.location = pathlib.Path(ns.location)
 
   if ns.use:
-    if ns.use not in ["libcurl", "urllib"]:
-      print(f"{ns.use} is not a valid downloading scheme. Currently only libcurl and urllib are supported")
+    if ns.use not in ["libcurl", "requests", "urllib"]:
+      print(f"{ns.use} is not a valid downloading scheme. Currently only libcurl, requests, and urllib are supported")
       error = True
+  else:
+    ns.use = "libcurl"
 
   if error:
     exit(1)
@@ -154,6 +156,7 @@ def main(args: List[str]) -> None:
       ns.password,
       verbose=verbose,
       libcurl=ns.use == "libcurl",
+      requests=ns.use == "requests",
       urllib=ns.use == "urllib"
     )
   elif ns.gui:

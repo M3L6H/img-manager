@@ -59,7 +59,7 @@ def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool
         res = urllib.request.urlopen(request)
         with open(str(local_filename), "wb") as f:
           f.write(res.read())
-      else:
+      elif "requests" in kwargs and kwargs["requests"]:
         with my_request(url, headers={ "Accept-Encoding": "gzip, deflate, br" }, stream=True, verbose=verbose) as r:
           r.raise_for_status()
           with open(str(local_filename), "wb") as f:
@@ -67,6 +67,8 @@ def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool
               f.write(chunk)
               f.flush()
               os.fsync(f.fileno())
+      else:
+        raise RuntimeError(f"No download scheme supplied")
       return local_filename
     except Exception as e:
       print(f"Attempt #{attempt + 1} failed with error: {e}")
