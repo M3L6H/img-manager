@@ -1,6 +1,6 @@
 .vscode/
 
 *.journal
-*.sqlite
+*.sqlite*
 *.session.sql
 pwords.txt
