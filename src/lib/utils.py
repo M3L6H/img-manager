@@ -1,26 +1,31 @@
 from typing import Dict, List, Set, Tuple
 
+import certifi
 import os
-import posixpath
-try:
-    from urlparse import urlsplit
-    from urllib import unquote
-except ImportError: # Python 3
-    from urllib.parse import urlsplit, unquote
-
 import pathlib
+import posixpath
+import pycurl
 import random
 import re
 import requests
 import string
 import time
+from urllib.parse import urlsplit, unquote
+import urllib.request
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36"
+DEFAULT_HEADERS = {
+  "Accept": "*/*",
+  "Accept-Encoding": "identity;q=1, *;q=0",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Connection": "keep-alive",
+  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36"
+}
+DEFAULT_HEADERS_LIST = [f"{k}: {DEFAULT_HEADERS[k]}" for k in DEFAULT_HEADERS]
 
 session = requests.Session()
 last_url = ""
 
-def download_file(url: str, target: pathlib.Path, attempts=3) -> pathlib.Path:
+def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool=False, **kwargs) -> pathlib.Path:
   """
   Downloads a URL content into a file (with large file support by streaming)
 
@@ -36,14 +41,38 @@ def download_file(url: str, target: pathlib.Path, attempts=3) -> pathlib.Path:
       time.sleep(timeout * (2 ** attempt))
 
     try:
-      with my_request(url, stream=True) as r:
-        r.raise_for_status()
-        with open(str(local_filename), 'wb') as f:
-          for chunk in r.iter_content(chunk_size=1024*1024):
-            f.write(chunk)
+      if "libcurl" in kwargs and kwargs["libcurl"]:
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.CAINFO, certifi.where())
+        cookies = []
+        for k, v in session.cookies.iteritems():
+          cookies.append(f"{k}={v}")
+        cookies = "; ".join(cookies)
+        c.setopt(c.HTTPHEADER, [*DEFAULT_HEADERS_LIST, f"Cookie: {cookies}"])
+        with open(str(local_filename), "wb") as f:
+          c.setopt(c.WRITEDATA, f)
+          c.perform()
+      elif "urllib" in kwargs and kwargs["urllib"]:
+        request = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+        session.cookies.add_cookie_header(request)
+        res = urllib.request.urlopen(request)
+        with open(str(local_filename), "wb") as f:
+          f.write(res.read())
+      else:
+        with my_request(url, headers={ "Accept-Encoding": "gzip, deflate, br" }, stream=True, verbose=verbose) as r:
+          r.raise_for_status()
+          with open(str(local_filename), "wb") as f:
+            for chunk in r.iter_content(chunk_size=4096 * 64):
+              f.write(chunk)
+              f.flush()
+              os.fsync(f.fileno())
       return local_filename
     except Exception as e:
       print(f"Attempt #{attempt + 1} failed with error: {e}")
+    finally:
+      if "libcurl" in kwargs and kwargs["libcurl"]:
+        c.close()
   return None
 
 def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, verbose: bool=False, **kwargs) -> requests.Response:
@@ -61,15 +90,6 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
   match = re.match(r"^(https?://)?(?P<host>[^/]+).*$", url, re.IGNORECASE)
   host = match.group("host")
 
-  default_headers = {
-    "Accept": "*/*",
-    "Accept-Encoding": "identity;q=1, *;q=0",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Connection": "keep-alive",
-    "Host": host,
-    "User-Agent": USER_AGENT
-  }
-
   if verbose:
     print(f"Making {method} request to {url} with {kwargs}...")
 
@@ -77,7 +97,8 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
     method,
     url,
     headers={
-      **default_headers,
+      **DEFAULT_HEADERS,
+      "Host": host,
       **headers
     },
     **kwargs

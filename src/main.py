@@ -47,7 +47,7 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
     help="Launch the GUI"
   )
   parser.add_argument(
-    "--location",
+    "-l", "--location",
     help="Specify a location to download files to"
   )
   parser.add_argument(
@@ -58,6 +58,10 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
     "--templates",
     action="store_true",
     help="Open the templates folder"
+  )
+  parser.add_argument(
+    "--use",
+    help="Specify a downloading scheme to use. Accepted values are libcurl and urllib"
   )
   parser.add_argument(
     "--username",
@@ -110,6 +114,11 @@ def validate_input(ns: argparse.Namespace) -> None:
       f.write(ns.location)
     ns.location = pathlib.Path(ns.location)
 
+  if ns.use:
+    if ns.use not in ["libcurl", "urllib"]:
+      print(f"{ns.use} is not a valid downloading scheme. Currently only libcurl and urllib are supported")
+      error = True
+
   if error:
     exit(1)
 
@@ -137,7 +146,16 @@ def main(args: List[str]) -> None:
   if ns.add:
     functions.add(my_db, ns.add)
   elif ns.download:
-    functions.download(my_db, ns.download, ns.location, ns.username, ns.password, verbose=verbose)
+    functions.download(
+      my_db,
+      ns.download,
+      ns.location,
+      ns.username,
+      ns.password,
+      verbose=verbose,
+      libcurl=ns.use == "libcurl",
+      urllib=ns.use == "urllib"
+    )
   elif ns.gui:
     mw = gui.MainWindow(my_db, verbose=verbose)
     mw.show()

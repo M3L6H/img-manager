@@ -96,7 +96,7 @@ def download(my_db: db.DB, template: pathlib.Path, location: pathlib.Path, usern
 
 def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool=False, **kwargs) -> Optional[pathlib.Path]:
   if action.tag == "page":
-    parse_page(action, root, match, **kwargs)
+    parse_page(action, root, match, verbose=verbose, **kwargs)
     return
 
   if action.tag != "action":
@@ -106,6 +106,9 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
     raise TemplateException("<action> tag missing required attribute: type")
 
   action_type = action.attrib["type"]
+
+  if verbose:
+    print(f"Performing {action_type}")
 
   if action_type == "delete":
     if "regex" not in action.attrib:
@@ -129,9 +132,9 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
     if "url" not in action.attrib:
       raise TemplateException("Download <action> tag missing required attribute: url")
     url = utils.substitute(action.attrib["url"], match)
-    file = utils.download_file(url, kwargs["location"])
+    file = utils.download_file(url, kwargs["location"], verbose=verbose)
     if verbose:
-      print("Downloaded file")
+      print(f"Downloaded {file}")
     return file
   elif action_type == "extract":
     if "action_res" not in kwargs:
@@ -255,4 +258,4 @@ def parse_page(page: ET.Element, root: str, match: Tuple[str]=None, verbose: boo
     models.Downloaded.create(my_db, url=url)
 
   if should_continue and index is not None:
-    parse_page(page, root, match, verbose, index=index + 1, my_db=my_db, **kwargs)
+    parse_page(page, root, match, verbose=verbose, index=index + 1, my_db=my_db, **kwargs)
