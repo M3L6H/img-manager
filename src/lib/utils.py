@@ -27,18 +27,18 @@ DEFAULT_HEADERS_LIST = [f"{k}: {DEFAULT_HEADERS[k]}" for k in DEFAULT_HEADERS]
 session = requests.Session()
 last_url = ""
 
-def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool=False, **kwargs) -> pathlib.Path:
+def download_file(url: str, target: pathlib.Path, retries: int=3, verbose: bool=False, **kwargs) -> pathlib.Path:
   """
   Downloads a URL content into a file (with large file support by streaming)
 
   :param url: URL to download
   :param file_path: Local file name to contain the data downloaded
-  :param attempts: Number of attempts
+  :param retries: Number of retries
   :return: New file path. Empty string if the download failed
   """
   local_filename = target.joinpath(url2filename(url))
   timeout = 2
-  for attempt in range(0, attempts):
+  for attempt in range(0, retries):
     if attempt > 0:
       time.sleep(timeout * (2 ** attempt))
 
@@ -79,7 +79,7 @@ def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool
         c.close()
   return None
 
-def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, verbose: bool=False, **kwargs) -> requests.Response:
+def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, retries: int=3, verbose: bool=False, **kwargs) -> requests.Response:
   """
   Wrapper arround requests to make a session-backed request with some default
   headers.
@@ -97,16 +97,21 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
   if verbose:
     print(f"Making {method} request to {url} with {kwargs}...")
 
-  r = session.request(
-    method,
-    url,
-    headers={
-      **DEFAULT_HEADERS,
-      "Host": host,
-      **headers
-    },
-    **kwargs
-  )
+  for attempt in range(retries):
+    try:
+      r = session.request(
+        method,
+        url,
+        headers={
+          **DEFAULT_HEADERS,
+          "Host": host,
+          **headers
+        },
+        **kwargs
+      )
+      break
+    except Exception as e:
+      print(f"\nAttempt ${attempt + 1} failed with error: {e}")
 
   if r.status_code < 200 or r.status_code >= 300:
     print(f"Error while trying to access '{url}'")
