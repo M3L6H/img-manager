@@ -242,7 +242,7 @@ def parse_page(page: ET.Element, root: str, match: Tuple[str]=None, verbose: boo
       index = int(page.attrib["start"])
 
     if "index" in kwargs:
-      index = kwargs["index"]
+      index = kwargs.pop("index")
 
     url = page.attrib["url"].replace("{index}", str(index))
 
