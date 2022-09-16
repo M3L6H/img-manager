@@ -103,6 +103,54 @@ class CTkAutoScrollbar(CTkScrollbar):
         self.pack(side=self.side, fill="y")
       super().set(lo, hi)
 
+class CTkLabelButton(CTkLabel):
+  def __init__(self, *args,
+    command: Callable[[tkinter.Event], any]=None,
+    state: str=tkinter.NORMAL,
+    **kwargs
+  ):
+    if "bg_color" in kwargs:
+      bg_color = kwargs.pop("bg_color")
+    else:
+      bg_color = ThemeManager.theme["color"]["button"]
+
+    if "cursor" in kwargs:
+      cursor = kwargs.pop("cursor")
+    else:
+      cursor = "arrow" if state == tkinter.DISABLED else "hand2"
+
+    if "text" in kwargs:
+      kwargs.pop("text")
+
+    if "width" in kwargs:
+      kwargs.pop("width")
+
+    super().__init__(*args, bg_color=bg_color, cursor=cursor, text=None, width=28, **kwargs)
+
+    self.__command = command
+    self.state = state
+
+    self.text_label.bind("<Button-1>", self.__command)
+    self.bind("<Enter>", lambda _: self.__hover())
+    self.bind("<Leave>", lambda _: self.__unhover())
+
+  def configure(self, **kwargs):
+    if "state" in kwargs:
+      self.state = kwargs.pop("state")
+      if self.state == tkinter.DISABLED or self.__command is None:
+        kwargs["cursor"] = "arrow"
+      else:
+        kwargs["cursor"] = "hand2"
+
+    super().configure(**kwargs)
+
+  def __hover(self):
+    if self.state == tkinter.DISABLED or self.__command is None: return
+    self.configure(bg_color=ThemeManager.theme["color"]["button_hover"])
+
+  def __unhover(self):
+    self.configure(bg_color=ThemeManager.theme["color"]["button"])
+
 class CTkListbox(CTkBaseClass):
   def __init__(self, *args,
                  bg_color: Union[str, Tuple[str, str], None] = None,
@@ -115,7 +163,7 @@ class CTkListbox(CTkBaseClass):
                  height: int = 400,
                  border_width: Union[int, str] = "default_theme",
                  text_font: any = "default_theme",
-                 state: str = "normal",
+                 state: str = tkinter.NORMAL,
                  selected: int=None,
                  values: List[Tuple[int, str]]=[],
                  command: Callable[[str], any]=None,
@@ -276,6 +324,9 @@ class CTkListbox(CTkBaseClass):
         self.selected = i
         self.command(id)
 
+  def get_cursor(self):
+    return "hand2" if self.state == tkinter.NORMAL else "arrow"
+
   def __highlight(self, i: int):
     self.labels[i].configure(bg=ThemeManager.single_color(self.active_color, self._appearance_mode))
 
@@ -296,7 +347,7 @@ class CollapsibleState(enum.Enum):
 class Collapsible(CTkBaseClass):
   def __init__(self, *args,
     bg_color: Union[str, Tuple[str, str], None]=None,
-    fg_color: Union[str, Tuple[str, str], None] = "default_theme",
+    fg_color: Union[str, Tuple[str, str], None]="default_theme",
     children: Dict[str, Tuple[str, Dict]]={},
     delete_command: Union[Callable[[str], any], List[Callable[[str], any]]]=[],
     height: int=50,
@@ -341,11 +392,10 @@ class Collapsible(CTkBaseClass):
 
     self.__caret_down_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("caret-down-icon.png"))
     self.__caret_right_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("caret-right-icon.png"))
-    self.__caret = tkinter.Label(
+    self.__caret = CTkLabelButton(
       master=self.__header,
-      image=self.__caret_down_pimage if state == CollapsibleState.OPEN else self.__caret_right_pimage,
-      text=None,
-      bg=ThemeManager.single_color(ThemeManager.theme["color"]["button"], self._appearance_mode)
+      command=lambda _: self.toggle_state(),
+      image=self.__caret_down_pimage if state == CollapsibleState.OPEN else self.__caret_right_pimage
     )
     self.__caret.grid(row=0, column=0)
 
@@ -406,7 +456,6 @@ class Collapsible(CTkBaseClass):
       self.__caret.grid_remove()
       self.__hide()
     else:
-      self.__caret.bind("<Button-1>", lambda _: self.toggle_state())
       self.__header.canvas.bind("<Button-1>", lambda _: self.toggle_state())
 
     if self.__state == CollapsibleState.COLLAPSED:
@@ -454,12 +503,10 @@ class Collapsible(CTkBaseClass):
       if len(self.__children) == 0:
         self.__caret.grid_remove()
         self.__hide()
-        self.__caret.bind("<Button-1>", None)
         self.__header.canvas.bind("<Button-1>", None)
         self.__header.configure(cursor="arrow")
       else:
         self.__caret.grid()
-        self.__caret.bind("<Button-1>", lambda _: self.toggle_state())
         self.__header.canvas.bind("<Button-1>", lambda _: self.toggle_state())
         self.__header.configure(cursor="hand2")
 
@@ -529,6 +576,9 @@ class Collapsible(CTkBaseClass):
 
   def get_dict(self) -> Dict[str, Tuple[str, Dict]]:
     return copy.deepcopy(self.__children)
+
+  def get_header(self) -> CTkFrame:
+    return self.__header
 
   def __hide(self):
     if self.__root:

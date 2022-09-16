@@ -2,6 +2,7 @@ from typing import List
 
 import customtkinter
 import tkinter
+import tkinter.ttk as ttk
 
 import pathlib
 import re
@@ -34,11 +35,13 @@ class MainWindow(customtkinter.CTk):
     self.protocol("WM_DELETE_WINDOW", self.on_closing)  # call .on_closing() when app gets closed
 
     # ===== INITIALIZE MEMBERS =====
+    self.__copied = None
     self.__entries_per_page = 75
     self.__images = []
     self.__max_page = None
     self.__page = 0
     self.__page_var = tkinter.StringVar()
+    self.__paste_tags_progress_bar = None
     self.__selected_image = None
     self.__tag_var = tkinter.StringVar()
     self.update_page_var()
@@ -151,15 +154,13 @@ class MainWindow(customtkinter.CTk):
     self.__frame_header.grid_columnconfigure(2, weight=1)
 
     self.__open_in_explorer_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("folder-open-icon.png"))
-    self.__open_in_explorer = tkinter.Label(
+    self.__open_in_explorer_btn = widgets.CTkLabelButton(
       master=self.__frame_header,
+      command=lambda _: self.open_in_explorer(),
       image=self.__open_in_explorer_pimage,
-      text=None,
-      cursor="arrow",
-      bg=customtkinter.ThemeManager.single_color(customtkinter.ThemeManager.theme["color"]["button"], self.appearance_mode)
+      state=tkinter.DISABLED
     )
-    self.__open_in_explorer.grid(row=0, column=0)
-    self.__open_in_explorer.bind("<Button-1>", lambda _: self.open_in_explorer())
+    self.__open_in_explorer_btn.grid(row=0, column=0)
 
     self.__file_name_var = tkinter.StringVar()
     self.__file_name = customtkinter.CTkLabel(
@@ -198,6 +199,24 @@ class MainWindow(customtkinter.CTk):
       value="Tags"
     )
     self.__collapsible.grid(row=0, column=0, sticky="nswe", pady=10)
+
+    self.__copy_tags_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("copy-icon.png"))
+    self.__copy_tags_btn = widgets.CTkLabelButton(
+      master=self.__collapsible.get_header(),
+      image=self.__copy_tags_pimage,
+      command=lambda _: self.__copy_tags(),
+      state=tkinter.DISABLED
+    )
+    self.__copy_tags_btn.grid(row=0, column=2, sticky="nswe")
+
+    self.__paste_tags_pimage = tkinter.PhotoImage(file=IMAGE_DIR.joinpath("paste-icon.png"))
+    self.__paste_tags_btn = widgets.CTkLabelButton(
+      master=self.__collapsible.get_header(),
+      image=self.__paste_tags_pimage,
+      command=lambda _: self.__paste_tags(),
+      state=tkinter.DISABLED
+    )
+    self.__paste_tags_btn.grid(row=0, column=3, sticky="nswe", padx=10)
 
     # ===== LOAD DATA =====
     self.max_page_t = threading.Thread(target=self.fetch_max_page)
@@ -244,6 +263,10 @@ class MainWindow(customtkinter.CTk):
     self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm", validate=tkinter.ALL)
     self.__tag_entry.focus()
     self.update_autocomplete()
+
+  def __copy_tags(self):
+    self.__copied = self.__selected_image
+    self.__paste_tags_btn.configure(state=tkinter.NORMAL)
 
   def delete_image_tag(self, id):
     thread = threading.Thread(target=lambda id=id: self.__delete_image_tag_task(id))
@@ -322,12 +345,14 @@ class MainWindow(customtkinter.CTk):
       self.__file_name_var.set(local_path)
       thread = threading.Thread(target=self.__load_media_task)
       thread.start()
-      self.__open_in_explorer.configure(cursor="hand2")
+      self.__open_in_explorer_btn.configure(state=tkinter.NORMAL)
       self.__media_widget.configure(file=local_path)
     else:
       self.__selected_image = None
       self.__collapsible.configure(children={})
-      self.__open_in_explorer.configure(cursor="arrow")
+      self.__open_in_explorer_btn.configure(state=tkinter.DISABLED)
+      self.__copy_tags_btn.configure(state=tkinter.DISABLED)
+      self.__paste_tags_btn.configure(state=tkinter.DISABLED)
       self.__tag_entry.configure(state=tkinter.DISABLED, cursor="arrow")
 
   def __load_media_task(self):
@@ -339,6 +364,15 @@ class MainWindow(customtkinter.CTk):
     self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
     self.__tag_entry.focus()
 
+    self.__list_widget.configure(state=tkinter.NORMAL)
+    self.__copy_tags_btn.configure(state=tkinter.NORMAL)
+
+    if self.__copied is not None:
+      self.__paste_tags_btn.configure(state=tkinter.NORMAL)
+
+    if self.__paste_tags_progress_bar is not None:
+      self.__paste_tags_progress_bar.destroy()
+      self.__paste_tags_progress_bar = None
 
   def max_page(self) -> int:
     if self.__max_page == None:
@@ -357,6 +391,34 @@ class MainWindow(customtkinter.CTk):
     filename = self.__file_name_var.get()
     if filename:
       subprocess.Popen(f"explorer /select,\"{pathlib.WindowsPath(filename)}\"")
+
+  def __paste_tags(self):
+    thread = threading.Thread(target=self.__paste_tags_task)
+
+    self.__copy_tags_btn.configure(state=tkinter.DISABLED)
+    self.__list_widget.configure(state=tkinter.DISABLED)
+    self.__paste_tags_btn.configure(state=tkinter.DISABLED)
+    self.__tag_entry.configure(cursor="arrow", state=tkinter.DISABLED)
+
+    self.__paste_tags_progress_bar = ttk.Progressbar(
+      master=self.__collapsible.get_header(),
+      orient=tkinter.HORIZONTAL,
+      mode="determinate",
+      length=100
+    )
+    self.__paste_tags_progress_bar.grid(row=0, column=4)
+    thread.start()
+
+  def __paste_tags_task(self):
+    if self.__copied is None or self.__copied == self.__selected_image:
+      return
+    db_copy = db.DB.copy(self.__my_db)
+    image_tags = models.ImageTag.find_all(db_copy, image=self.__copied.id)
+    self.__paste_tags_progress_bar.configure(length=len(image_tags))
+    for i, image_tag in enumerate(image_tags):
+      models.ImageTag.create(db_copy, image=self.__selected_image.id, tag=image_tag.tag)
+      self.__paste_tags_progress_bar.configure(value=i + 1)
+    self.__load_media_task()
 
   def prev_page(self):
     self.disable_pagination()
