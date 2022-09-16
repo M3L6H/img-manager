@@ -538,6 +538,11 @@ class Collapsible(CTkBaseClass):
     del self.__children[id]
     self.configure(require_redraw=True, children=self.__children)
 
+  def destroy(self):
+    for child in self.__child_collapsibles:
+      child.destroy()
+    super().destroy()
+
   def draw(self, no_color_updates=False):
     if no_color_updates is False and self.__root:
       self.canvas.configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
