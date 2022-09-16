@@ -41,7 +41,7 @@ class CTkAutocompleteEntry(CTkEntry):
       self.entry.delete(self.entry.index(tkinter.INSERT), tkinter.END)
 
   def __key_press(self, e):
-    if len(e.keysym) == 1 or e.keysym in ["BackSpace", "colon", "Tab"]:
+    if len(e.keysym) == 1 or e.keysym in ["BackSpace", "colon"]:
       parts = self.textvariable.get().split(":")
       tree = self.__tree
 
@@ -49,7 +49,7 @@ class CTkAutocompleteEntry(CTkEntry):
         if part in tree:
           tree = tree[part]
         else:
-          return True
+          return
 
       matches = [k for k in tree if re.match(f"{parts[-1]}.+", k)]
 
@@ -67,6 +67,7 @@ class CTkAutocompleteEntry(CTkEntry):
     if not self.__autofilled and old_value[-1] != ":":
       self.textvariable.set(old_value + ":")
       self.entry.icursor(len(old_value) + 1)
+      e.keysym = "colon"
       self.__key_press(e)
       self.after_idle(lambda: self.entry.configure(validate=tkinter.ALL))
     else:
