@@ -126,6 +126,9 @@ TYPE_MAP = {
   "datetime": Type.TIMESTAMP
 }
 
+class QueryError(sqlite3.Error):
+  pass
+
 class UniqueError(sqlite3.Error):
   pass
 
@@ -314,7 +317,7 @@ class DB:
       except sqlite3.Error as e:
         msg = f"Failed to execute {q} due to {e}"
 
-        if "UNIQUE constraint failed" in e:
+        if "UNIQUE constraint failed" in str(e):
           raise UniqueError(msg)
 
         raise sqlite3.Error(msg)
@@ -340,17 +343,19 @@ class DB:
       query = f"SELECT * FROM {table}"
       conditions = []
       for k in kwargs:
-        if kwargs[k] != "*":
-          conditions.append(f" {k}=?")
-        else:
+        if kwargs[k] is None:
+          conditions.append(f" {k} IS NULL")
+        elif kwargs[k] == "*":
           conditions.append(f" {k} IS NOT NULL AND {k}!=?")
+        else:
+          conditions.append(f" {k}=?")
       if len(conditions) > 0:
         query += " WHERE" + " AND".join(conditions)
       if limit:
         query += f" LIMIT {limit}"
       if offset:
         query += f" OFFSET {offset}"
-      return self.execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
+      return self.execute(query, fetch, tuple([kwargs[k] if kwargs[k] != "*" else "" for k in kwargs if kwargs[k] is not None]))
 
     return self.execute(f"SELECT * FROM {table}", fetch)
 
