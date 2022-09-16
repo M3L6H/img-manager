@@ -3,12 +3,14 @@ from typing import List
 import customtkinter
 import tkinter
 
-import db
-import models
 import pathlib
 import re
 import subprocess
 import threading
+
+import db
+import models
+import utils
 import widgets
 
 HOME = pathlib.Path.home()
@@ -232,7 +234,10 @@ class MainWindow(customtkinter.CTk):
       tag_dict[tag.id] = level
       tag_dict = level[1]
 
-      models.ImageTag.create(db_copy, image=image.id, tag=tag.id)
+      try:
+        models.ImageTag.create(db_copy, image=image.id, tag=tag.id)
+      except db.UniqueError:
+        pass
 
     self.__collapsible.configure(children=new_children)
     self.__tag_var.set("")
@@ -327,26 +332,8 @@ class MainWindow(customtkinter.CTk):
 
   def __load_media_task(self):
     db_copy = db.DB.copy(self.__my_db)
-    query = "SELECT TAG.id, TAG.name, TAG.parent FROM TAG JOIN IMAGETAG ON IMAGETAG.tag = TAG.id JOIN IMAGE ON IMAGE.id = IMAGETAG.image WHERE IMAGE.local_path = ?;"
-    tags: List = db_copy.execute(query, db.Fetch.ALL, (self.__file_name_var.get(),))
-    children = {}
-    dict_of_dicts = {}
-
-    i = 0
-
-    while i < len(tags):
-      tag = tags[i]
-      id, name, parent = tag
-      dict_of_dicts[id] = {}
-
-      if parent is None:
-        children[id] = (name, dict_of_dicts[id])
-      elif parent in dict_of_dicts:
-        dict_of_dicts[parent][id] = (name, dict_of_dicts[id])
-      else:
-        tags.append(tag)
-
-      i += 1
+    tags = models.get_tags_for_image(db_copy, local_path=self.__file_name_var.get())
+    children = utils.create_tag_tree(tags)
 
     self.__collapsible.configure(children=children)
     self.__tag_entry.configure(state=tkinter.NORMAL, cursor="xterm")
