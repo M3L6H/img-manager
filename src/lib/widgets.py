@@ -327,7 +327,8 @@ class CTkListbox(CTkBaseClass):
     return "hand2" if self.state == tkinter.NORMAL else "arrow"
 
   def __highlight(self, i: int):
-    self.labels[i].configure(bg=ThemeManager.single_color(self.active_color, self._appearance_mode))
+    if self.state != tkinter.DISABLED:
+      self.labels[i].configure(bg=ThemeManager.single_color(self.active_color, self._appearance_mode))
 
   def __unhighlight(self, i: int):
     if i % 2 == 0:
