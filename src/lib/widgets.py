@@ -496,10 +496,9 @@ class Collapsible(CTkBaseClass):
       self.canvas.configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
 
     i = 0
+    alphabetical_list = sorted([(id, *self.__children[id]) for id in self.__children], key=lambda t: t[1])
 
-    for id in self.__children:
-      value, children = self.__children[id]
-
+    for id, value, children in alphabetical_list:
       if i < len(self.__child_collapsibles):
         self.__child_collapsibles[i].configure(
           children=children,
