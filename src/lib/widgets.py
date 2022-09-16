@@ -235,7 +235,7 @@ class CTkListbox(CTkBaseClass):
 
     for i, (_, value) in enumerate(self.values):
       if i < len(self.labels):
-        self.labels[i].configure(text=value, cursor="hand2", state=tkinter.NORMAL)
+        self.labels[i].configure(text=value, state=tkinter.NORMAL)
       else:
         self.labels.append(tkinter.Label(
           master=self.__container,
@@ -259,7 +259,7 @@ class CTkListbox(CTkBaseClass):
         else:
           self.labels[i].configure(fg=ThemeManager.single_color(self.text_color, self._appearance_mode))
 
-        if i % 2 == 0:
+        if i % 2 == 0 and self.selected != i:
           self.labels[i].configure(bg=ThemeManager.single_color(self.bg_color, self._appearance_mode))
         else:
           self.labels[i].configure(bg=ThemeManager.single_color(self.fg_color, self._appearance_mode))
@@ -286,7 +286,6 @@ class CTkListbox(CTkBaseClass):
       cursor = self.get_cursor()
       if cursor and "cursor" not in kwargs:
         kwargs["cursor"] = cursor
-      require_redraw = True
 
     if "fg_color" in kwargs:
       self.fg_color = kwargs.pop("fg_color")
