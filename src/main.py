@@ -42,6 +42,11 @@ def parse_arguments(parser: argparse.ArgumentParser, args: List[str]) -> argpars
     help="Specify path to db"
   )
   parser.add_argument(
+    "--execute",
+    metavar="query",
+    help="Execute a SQL query against the db. WARNING: For debugging purposes ONLY. You can corrupt your data"
+  )
+  parser.add_argument(
     "--gui",
     action="store_true",
     help="Launch the GUI"
@@ -103,6 +108,9 @@ def validate_input(ns: argparse.Namespace) -> None:
       print(f"{ns.download} is not present in template directory.")
       error = True
 
+  if ns.execute:
+    ns.verbose = True
+
   if not ns.location:
     if os.path.isfile(LAST_LOCATION):
       with open(str(LAST_LOCATION), "r") as f:
@@ -159,6 +167,8 @@ def main(args: List[str]) -> None:
       requests=ns.use == "requests",
       urllib=ns.use == "urllib"
     )
+  elif ns.execute:
+    functions.execute(my_db, ns.execute)
   elif ns.gui:
     mw = gui.MainWindow(my_db, verbose=verbose)
     mw.show()
