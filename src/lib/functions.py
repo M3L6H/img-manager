@@ -1,18 +1,19 @@
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
+import msvcrt
 import pathlib
 import os
+import re
+import requests
 from tqdm import tqdm
 import xml.etree.ElementTree as ET
+import zipfile
 
 import db
 import models
-import msvcrt
-import re
-import requests
 import utils
-import zipfile
 
+CURR_DIR = pathlib.Path.cwd()
 HOME = pathlib.Path.home()
 DATA_DIR = HOME.joinpath(".img-manager")
 SUPPORTED_MEDIA = { ".jpg", ".jpeg", ".png", ".mp4", ".mov" }
@@ -37,6 +38,32 @@ def add(my_db: db.DB, to_add: str, with_output: bool=True) -> None:
     models.Image.create(my_db, local_path=str(to_add))
     if with_output:
       print(f"Registered {to_add}")
+
+def create_metadata(my_db: db.DB, output_dir: pathlib.Path=CURR_DIR, images: List[str]=None) -> None:
+  db_copy = db.DB.copy(my_db)
+  data = []
+  if images is not None:
+    for local_path in images:
+      data.extend(models.get_tags_for_image(db_copy, local_path=local_path))
+  else:
+    data = models.get_tags_for_image(db_copy)
+
+  jsonl = []
+  image_dict: Dict[str, Tuple[str, str, str]] = {}
+
+  for tag_id, tag_name, tag_parent, _, image_local_path in data:
+    if image_local_path in image_dict:
+      image_dict[image_local_path].append((tag_id, tag_name, tag_parent))
+    else:
+      image_dict[image_local_path] = [(tag_id, tag_name, tag_parent)]
+
+  for local_path in image_dict:
+    jsonl.append({ "file_name": local_path, "text": " ".join(utils.dfs(utils.create_tag_tree(image_dict[local_path]))) })
+
+  jsonl = [str(d) for d in jsonl]
+
+  with open(str(output_dir.joinpath("metadata.jsonl")), "w") as f:
+    f.writelines(jsonl)
 
 class AuthenticationException(Exception):
   pass
@@ -95,6 +122,14 @@ def download(my_db: db.DB, template: pathlib.Path, location: pathlib.Path, usern
   for page in root:
     parse_page(page, root.attrib["root"], username=username, password=password, location=location, my_db=db_copy, verbose=verbose, **kwargs)
 
+def execute(my_db: db.DB, query: str) -> None:
+  """
+  Execute query against my_db
+  """
+  res = my_db.execute(query, db.Fetch.ALL)
+  print(res)
+
+
 def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool=False, **kwargs) -> Optional[pathlib.Path]:
   if action.tag == "page":
     parse_page(action, root, match, verbose=verbose, **kwargs)
@@ -150,7 +185,12 @@ def parse_action(action: ET.Element, root: str, match: Tuple[str], verbose: bool
       print(f"\nEncountered error {e} while trying to extract {file}. Continue? (y/N)")
       if msvcrt.getch().lower() != b"y":
         exit(1)
-    os.remove(file)
+    while True:
+      try:
+        os.remove(file)
+        break
+      except PermissionError:
+        pass
     if verbose:
       print("Extracted file")
     return target_path
@@ -237,7 +277,7 @@ def parse_page(page: ET.Element, root: str, match: Tuple[str]=None, verbose: boo
       index = int(page.attrib["start"])
 
     if "index" in kwargs:
-      index = kwargs["index"]
+      index = kwargs.pop("index")
 
     url = page.attrib["url"].replace("{index}", str(index))
 

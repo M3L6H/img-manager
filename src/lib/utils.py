@@ -1,6 +1,7 @@
 from typing import Dict, List, Set, Tuple
 
 import certifi
+import glob
 import os
 import pathlib
 import posixpath
@@ -8,6 +9,7 @@ import pycurl
 import random
 import re
 import requests
+import shutil
 import string
 import time
 from urllib.parse import urlsplit, unquote
@@ -25,18 +27,61 @@ DEFAULT_HEADERS_LIST = [f"{k}: {DEFAULT_HEADERS[k]}" for k in DEFAULT_HEADERS]
 session = requests.Session()
 last_url = ""
 
-def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool=False, **kwargs) -> pathlib.Path:
+def create_tag_tree(tags: List[Tuple[str, str, str]]) -> Dict[str, Tuple[str, Dict]]:
+  tree = {}
+  dict_of_dicts = {}
+
+  i = 0
+
+  while i < len(tags):
+    tag = tags[i]
+    id, name, parent, *_ = tag
+
+    if id not in dict_of_dicts:
+      dict_of_dicts[id] = {}
+
+    if parent is None:
+      tree[id] = (name, dict_of_dicts[id])
+    elif parent in dict_of_dicts:
+      dict_of_dicts[parent][id] = (name, dict_of_dicts[id])
+    else:
+      tags.append(tag)
+
+    i += 1
+
+  return tree
+
+def dfs(tree: Dict[str, Tuple[str, Dict]]) -> List[str]:
+  stack: List[Tuple[str, Dict]] = []
+  for k in tree:
+    stack.append(tree[k])
+  my_list = []
+
+  while len(stack) > 0:
+    name, children = stack.pop()
+
+    if len(children) == 0:
+      my_list.append(name)
+
+    for k in children:
+      child_name, grandchildren = children[k]
+      stack.append((f"{name}:{child_name}", grandchildren))
+
+  return my_list
+
+
+def download_file(url: str, target: pathlib.Path, retries: int=3, verbose: bool=False, **kwargs) -> pathlib.Path:
   """
   Downloads a URL content into a file (with large file support by streaming)
 
   :param url: URL to download
   :param file_path: Local file name to contain the data downloaded
-  :param attempts: Number of attempts
+  :param retries: Number of retries
   :return: New file path. Empty string if the download failed
   """
   local_filename = target.joinpath(url2filename(url))
   timeout = 2
-  for attempt in range(0, attempts):
+  for attempt in range(0, retries):
     if attempt > 0:
       time.sleep(timeout * (2 ** attempt))
 
@@ -71,17 +116,17 @@ def download_file(url: str, target: pathlib.Path, attempts: int=3, verbose: bool
         raise RuntimeError(f"No download scheme supplied")
       return local_filename
     except Exception as e:
-      print(f"Attempt #{attempt + 1} failed with error: {e}")
+      print(f"\nAttempt #{attempt + 1} failed with error: {e}")
     finally:
       if "libcurl" in kwargs and kwargs["libcurl"]:
         c.close()
   return None
 
-def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, verbose: bool=False, **kwargs) -> requests.Response:
-  '''
+def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, retries: int=3, verbose: bool=False, **kwargs) -> requests.Response:
+  """
   Wrapper arround requests to make a session-backed request with some default
   headers.
-  '''
+  """
   global last_url
 
   if url is None:
@@ -95,30 +140,50 @@ def my_request(url: str=None, method: str="GET", headers: Dict[str, str]={}, ver
   if verbose:
     print(f"Making {method} request to {url} with {kwargs}...")
 
-  r = session.request(
-    method,
-    url,
-    headers={
-      **DEFAULT_HEADERS,
-      "Host": host,
-      **headers
-    },
-    **kwargs
-  )
+  for attempt in range(retries):
+    try:
+      r = session.request(
+        method,
+        url,
+        headers={
+          **DEFAULT_HEADERS,
+          "Host": host,
+          **headers
+        },
+        **kwargs
+      )
+      break
+    except Exception as e:
+      print(f"\nAttempt ${attempt + 1} failed with error: {e}")
 
   if r.status_code < 200 or r.status_code >= 300:
     print(f"Error while trying to access '{url}'")
 
   return r
 
+def rolling_backup(path: str, count: int=10):
+  """
+  Creates up to count backups of path. Starts rolling over once the count is
+  exceeded.
+  """
+  backups = glob.glob(path + "-backup*")
+  if len(backups) == 0:
+    shutil.copyfile(path, path + "-backup")
+  elif len(backups) < count:
+    shutil.copyfile(path, path + "-backup" + f"-{len(backups)}")
+  else:
+    backups = sorted(backups, key=lambda t: os.stat(t).st_mtime)
+    os.remove(backups[0])
+    shutil.copyfile(path, backups[0])
+
 def search_dir(dir: pathlib.Path, suffixes: Set[str]) -> List[pathlib.Path]:
   return [p.resolve() for p in dir.glob("**/*") if p.suffix.lower() in suffixes]
 
 def substitute(template: str, match: Tuple[str]) -> str:
-  '''
+  """
   Substitutes {0} patterns in the template string with the corresponding entry
   in the match tuple.
-  '''
+  """
   pattern = re.compile("\{(\d+)\}")
   substituted = template
 
@@ -130,10 +195,10 @@ def substitute(template: str, match: Tuple[str]) -> str:
   return substituted
 
 def unsafe_random_str(k: int=8, options: str=string.ascii_lowercase+string.digits) -> str:
-  '''
+  """
   Generates a cryptographically insecure string of length k by choosing
   randomly from the characters in options.
-  '''
+  """
   return "".join(random.choices(options, k=k))
 
 def url2filename(url):

@@ -1,3 +1,5 @@
+from typing import List, Tuple
+
 from datetime import datetime
 import db
 
@@ -21,6 +23,20 @@ class Image:
 
   def __str__(self):
     return f"local_path: '{self.local_path}'; thumbnail_path: '{self.thumbnail_path}'; cloud_url: '{self.cloud_url}'; last_seen: '{self.last_seen}'"
+
+def get_tags_for_image(my_db: db.DB, **kwargs) -> List[Tuple[str, str, str, str, str]]:
+  query = "SELECT TAG.id, TAG.name, TAG.parent, IMAGE.id, IMAGE.local_path FROM TAG JOIN IMAGETAG ON IMAGETAG.tag = TAG.id JOIN IMAGE ON IMAGE.id = IMAGETAG.image"
+  where = []
+
+  for k in kwargs:
+    where.append(f"IMAGE.{k} = ?")
+
+  where = " AND ".join(where)
+
+  if len(where) > 0:
+    query = " WHERE ".join([query, where])
+
+  return my_db.execute(query, db.Fetch.ALL, tuple(kwargs.values()))
 
 @db.model
 @db.unique("image", "tag")

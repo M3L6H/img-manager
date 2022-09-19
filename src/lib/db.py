@@ -45,10 +45,10 @@ class Field:
     self.__primarykey = primarykey
 
   def get_index(self) -> str:
-    '''
+    """
     Returns a template string with the command to create an index for this
     Field
-    '''
+    """
     if self.__index:
       index_name = f"{self.name}_index_{utils.unsafe_random_str()}"
       return f"CREATE INDEX {index_name} ON {{}} ({self.name});"
@@ -60,10 +60,10 @@ class Field:
     return f"FOREIGN KEY ({self.name}) REFERENCES {self.__references}"
 
   def get_unique(self) -> str:
-    '''
+    """
     Returns a string with the required command to create a unique constraint on
     this field.
-    '''
+    """
     if isinstance(self.__unique, list):
       return "UNIQUE({})".format(", ".join(self.__unique))
 
@@ -100,22 +100,22 @@ SCHEMA: Dict[str, List[Field]] = {}
 T = TypeVar("T")
 
 class ForeignKey(Generic[T]):
-  '''
+  """
   Wrapper for a foreign key into another table. The inner type should be the
   class name of the model. Should be the innermost wrapper.
-  '''
+  """
   pass
 
 class Index(Generic[T]):
-  '''
+  """
   Wrapper to indicate an index should be created on this column.
-  '''
+  """
   pass
 
 class Unique(Generic[T]):
-  '''
+  """
   Wrapper to create a unique constraint on a column.
-  '''
+  """
   pass
 
 TYPE_MAP = {
@@ -125,6 +125,9 @@ TYPE_MAP = {
   "bool": Type.BOOLEAN,
   "datetime": Type.TIMESTAMP
 }
+
+class QueryError(sqlite3.Error):
+  pass
 
 class UniqueError(sqlite3.Error):
   pass
@@ -266,6 +269,8 @@ class DB:
     return self.__query(table, Fetch.ALL, None, limit, offset, **kwargs)
 
   def update_schema(self):
+    utils.rolling_backup(self.path, count=5)
+
     # Create tables in schema
     for table in SCHEMA:
       self.create_table(table, SCHEMA[table])
@@ -312,7 +317,7 @@ class DB:
       except sqlite3.Error as e:
         msg = f"Failed to execute {q} due to {e}"
 
-        if "UNIQUE constraint failed" in e:
+        if "UNIQUE constraint failed" in str(e):
           raise UniqueError(msg)
 
         raise sqlite3.Error(msg)
@@ -338,17 +343,19 @@ class DB:
       query = f"SELECT * FROM {table}"
       conditions = []
       for k in kwargs:
-        if kwargs[k] != "*":
-          conditions.append(f" {k}=?")
-        else:
+        if kwargs[k] is None:
+          conditions.append(f" {k} IS NULL")
+        elif kwargs[k] == "*":
           conditions.append(f" {k} IS NOT NULL AND {k}!=?")
+        else:
+          conditions.append(f" {k}=?")
       if len(conditions) > 0:
         query += " WHERE" + " AND".join(conditions)
       if limit:
         query += f" LIMIT {limit}"
       if offset:
         query += f" OFFSET {offset}"
-      return self.execute(query, fetch, tuple([k if k != "*" else "" for k in kwargs.values()]))
+      return self.execute(query, fetch, tuple([kwargs[k] if kwargs[k] != "*" else "" for k in kwargs if kwargs[k] is not None]))
 
     return self.execute(f"SELECT * FROM {table}", fetch)
 
