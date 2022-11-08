@@ -87,6 +87,26 @@ export default class VideoPlayer {
   }
 
   /**
+   * Seek to a particular point in the video
+   * @param {Number} seconds Seconds to seek to
+   * @param {Number} frames Frames to seek to
+   */
+  seekTo(seconds, frames) {
+    if (this._fps && frames !== undefined) {
+      seconds = this.currentTime + (frames / this._fps);
+    }
+
+    seconds = Math.min(Math.max(0, seconds), this._video.duration);
+
+    this.pause();
+    this.skipTo({
+      target: {
+        value: seconds
+      }
+    });
+  }
+
+  /**
    * Called to load a video into the video player
    * @param {String} video The file path to the video
    */
@@ -97,6 +117,14 @@ export default class VideoPlayer {
 
     this._video.src = video;
     this._controls.classList.remove("hidden");
+  }
+
+  /**
+   * Called to pause the video
+   */
+  pause() {
+    this._video.pause();
+    this.showControls();
   }
 
   /**
@@ -160,7 +188,7 @@ export default class VideoPlayer {
    * @param {InputEvent} e Event fired when input is changed
    */
   skipTo(e) {
-    const skipTo = e.target.dataset.seek ? e.target.dataset.seek : e.target.value;
+    const skipTo = e.target.dataset && e.target.dataset.seek ? e.target.dataset.seek : e.target.value;
     this._video.currentTime = skipTo;
     this._progressBar.value = skipTo;
     this._seek.value = skipTo;
@@ -307,6 +335,13 @@ export default class VideoPlayer {
   /*****************************************************************************
   **                               GETTERS                                    **
   *****************************************************************************/
+
+  /**
+   * @returns A number representing the current time of the video in seconds
+   */
+  get currentTime() {
+    return this._video.currentTime;
+  }
 
   /**
    * @returns A number representing the average FPS of the video
