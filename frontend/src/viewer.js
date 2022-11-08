@@ -102,7 +102,7 @@ export default class Viewer {
 
     const [top, left] = this.mediaPosition;
     const scale = this._scale / this._baseScale;
-    const dx = left - this._baseLeft;
+    const dx = left - this._baseLeft * scale;
     const dy = top - this._baseTop * scale;
 
     for (let i = 0; i < this._rects.length; ++i) {
@@ -281,15 +281,20 @@ export default class Viewer {
    * Called to handle clicks on a canvas
    */
    canvasClickHandler(e) {
+    const [top, left] = this.mediaPosition;
+    const scale = this._scale / this._baseScale;
+    const dx = left - this._baseLeft * scale;
+    const dy = top - this._baseTop * scale;
+
     if (this._drawingRect) {
       this._drawingRect = false;
-    } else if (this._inLimits(e.clientX, e.clientY)) {
+    } else if (this._inLimits(e.pageX, e.pageY)) {
       this._drawingRect = true;
       this._rects.push({
-        x1: e.clientX,
-        y1: e.clientY,
-        x2: e.clientX,
-        y2: e.clientY
+        x1: (e.pageX - dx) / scale,
+        y1: (e.pageY - dy) / scale,
+        x2: (e.pageX - dx) / scale,
+        y2: (e.pageY - dy) / scale
       });
     }
   }
@@ -313,13 +318,18 @@ export default class Viewer {
    * @param {MouseEvent} e Event fired when the mouse moves
    */
   mouseMoveHandler(e) {
+    const [top, left] = this.mediaPosition;
+    const scale = this._scale / this._baseScale;
+    const dx = left - this._baseLeft * scale;
+    const dy = top - this._baseTop * scale;
+
     if (this._drawingRect && this._rects.length > 0) {
       const lastIdx = this._rects.length - 1;
 
       const { topLimit, bottomLimit, leftLimit, rightLimit } = this.limits;
 
-      this._rects[lastIdx].x2 = Math.max(Math.min(e.clientX, rightLimit), leftLimit);
-      this._rects[lastIdx].y2 = Math.max(Math.min(e.clientY, bottomLimit), topLimit);
+      this._rects[lastIdx].x2 = (Math.max(Math.min(e.clientX, rightLimit), leftLimit) - dx) / scale;
+      this._rects[lastIdx].y2 = (Math.max(Math.min(e.clientY, bottomLimit), topLimit) - dy) / scale;
     } else if (this._panning) {
       this.mediaPosition = [
         this._oldMediaTop + e.clientY - this._oldMouseY,
@@ -349,6 +359,11 @@ export default class Viewer {
         y2 = y1;
         y1 = yt;
       }
+
+      x1 = x1 * scale + dx;
+      y1 = y1 * scale + dy;
+      x2 = x2 * scale + dx;
+      y2 = y2 * scale + dy;
 
       if (x1 < e.clientX && e.clientX < x2
         && y1 < e.clientY && e.clientY < y2
