@@ -100,10 +100,7 @@ export default class Viewer {
   drawFrame() {
     this.ctx.clearRect(0, 0, this._viewerWidth, this._viewerHeight);
 
-    const [top, left] = this.mediaPosition;
-    const scale = this._scale / this._baseScale;
-    const dx = left - this._baseLeft * scale;
-    const dy = top - this._baseTop * scale;
+    const { scale, dx, dy } = this.offsets;
 
     for (let i = 0; i < this._rects.length; ++i) {
       const { x1, y1, x2, y2, hovered } = this._rects[i];
@@ -281,10 +278,7 @@ export default class Viewer {
    * Called to handle clicks on a canvas
    */
    canvasClickHandler(e) {
-    const [top, left] = this.mediaPosition;
-    const scale = this._scale / this._baseScale;
-    const dx = left - this._baseLeft * scale;
-    const dy = top - this._baseTop * scale;
+    const { scale, dx, dy } = this.offsets;
 
     if (this._drawingRect) {
       this._drawingRect = false;
@@ -318,10 +312,7 @@ export default class Viewer {
    * @param {MouseEvent} e Event fired when the mouse moves
    */
   mouseMoveHandler(e) {
-    const [top, left] = this.mediaPosition;
-    const scale = this._scale / this._baseScale;
-    const dx = left - this._baseLeft * scale;
-    const dy = top - this._baseTop * scale;
+    const { scale, dx, dy } = this.offsets;
 
     if (this._drawingRect && this._rects.length > 0) {
       const lastIdx = this._rects.length - 1;
@@ -431,7 +422,7 @@ export default class Viewer {
     const topLimit = Math.max(0, top);
     const leftLimit = Math.max(0, left);
     const bottomLimit = Math.min(this._viewerHeight, top + height);
-    const rightLimit = Math.min(this._viewerWidth, top + width);
+    const rightLimit = Math.min(this._viewerWidth, left + width);
     return { topLimit, bottomLimit, leftLimit, rightLimit };
   }
 
@@ -453,6 +444,21 @@ export default class Viewer {
       Number.parseInt(this._media.style.top.replace("px", "")),
       Number.parseInt(this._media.style.left.replace("px", ""))
     ];
+  }
+
+  /**
+   * @returns An object containing scale, and delta offets
+   */
+  get offsets() {
+    const [top, left] = this.mediaPosition;
+    const scale = this._scale / this._baseScale;
+    const dx = left - this._baseLeft * scale;
+    const dy = top - this._baseTop * scale;
+    return {
+      scale,
+      dx,
+      dy
+    };
   }
 
   /**
