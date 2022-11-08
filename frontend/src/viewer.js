@@ -30,7 +30,7 @@ export default class Viewer {
     this._panning = false;
 
     // Register listeners
-    document.addEventListener("resize", () => this.resizeHandler());
+    window.addEventListener("resize", () => this.resizeHandler());
     this._video.addEventListener("loadedmetadata", (e) => this.videoLoadHandler(e), false);
     this._viewer.addEventListener("mousemove", (e) => this.mouseMoveHandler(e));
     this._viewer.addEventListener("wheel", (e) => this.zoom(e));
