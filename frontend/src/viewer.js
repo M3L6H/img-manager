@@ -38,6 +38,9 @@ export default class Viewer {
     this.videoPlayer = new VideoPlayer(this);
     this.ctx = this._canvas.getContext("2d");
 
+    this._baseTop = 0;
+    this._baseLeft = 0;
+    this._baseScale = 0;
     this._mediaHeight = 0;
     this._mediaWidth = 0;
     this._viewerHeight = 0;
@@ -97,6 +100,11 @@ export default class Viewer {
   drawFrame() {
     this.ctx.clearRect(0, 0, this._viewerWidth, this._viewerHeight);
 
+    const [top, left] = this.mediaPosition;
+    const scale = this._scale / this._baseScale;
+    const dx = left - this._baseLeft;
+    const dy = top - this._baseTop * scale;
+
     for (let i = 0; i < this._rects.length; ++i) {
       const { x1, y1, x2, y2, hovered } = this._rects[i];
       const colorIdx = parseInt(`${(x1 % 4).toString(2)}${(y1 % 4).toString(2)}`, 2);
@@ -112,8 +120,8 @@ export default class Viewer {
 
       this.ctx.strokeStyle = `rgba(${COLORS[colorIdx]}, ${strokeAlpha})`;
       this.ctx.fillStyle = `rgba(${COLORS[colorIdx]}, ${fillAlpha})`;
-      this.ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
-      this.ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+      this.ctx.fillRect(x1 * scale + dx, y1 * scale + dy, (x2 - x1) * scale, (y2 - y1) * scale);
+      this.ctx.strokeRect(x1 * scale + dx, y1 * scale + dy, (x2 - x1) * scale, (y2 - y1) * scale);
     }
 
     requestAnimationFrame(() => this.drawFrame());
@@ -184,6 +192,10 @@ export default class Viewer {
 
     this.mediaDimensions = [height, width];
     this.mediaPosition = [top, left];
+
+    this._baseScale = this._scale;
+    this._baseTop = top;
+    this._baseLeft = left;
   }
 
   /**
