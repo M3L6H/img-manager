@@ -54,6 +54,7 @@ export default class Viewer {
     this._data = {};
 
     // State
+    this._creatingRect = false;
     this._drawingRect = false;
     this._panning = false;
 
@@ -92,6 +93,27 @@ export default class Viewer {
   cacheViewerDimensions() {
     this._viewerHeight = this._viewer.offsetHeight;
     this._viewerWidth = this._viewer.offsetWidth;
+  }
+
+  /**
+   * Called to cancel the creation of a rectangle
+   */
+  cancelRect() {
+    if (this._drawingRect) {
+      this._drawingRect = false;
+      this._rects.pop();
+    }
+
+    this._creatingRect = false;
+    this._canvas.style.cursor = "";
+  }
+
+  /**
+   * Called to start the process of creating a rectangle
+   */
+  createRect() {
+    this._creatingRect = true;
+    this._canvas.style.cursor = "crosshair";
   }
 
   /**
@@ -282,7 +304,9 @@ export default class Viewer {
 
     if (this._drawingRect) {
       this._drawingRect = false;
-    } else if (this._inLimits(e.pageX, e.pageY)) {
+      this._creatingRect = false;
+      this._canvas.style.cursor = "";
+    } else if (this._creatingRect && this._inLimits(e.pageX, e.pageY)) {
       this._drawingRect = true;
       this._rects.push({
         x1: (e.pageX - dx) / scale,

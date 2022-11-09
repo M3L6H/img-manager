@@ -85,6 +85,11 @@ const shortcutsHandler = (e) => {
       case "ArrowRight":
         player.seekTo((Math.floor(player.currentTime / 5) + 1) * 5);
         break;
+      case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
+        viewer.cancelRect();
+        break;
       case "f":
         viewer.toggleFullScreen();
         break;
@@ -98,6 +103,9 @@ const shortcutsHandler = (e) => {
         break;
       case "m":
         videoPlayer.toggleMute();
+        break;
+      case "r":
+        viewer.createRect();
         break;
       case " ":
         e.preventDefault();
