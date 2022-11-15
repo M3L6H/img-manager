@@ -1,0 +1,12 @@
+.name-tag, .name-tag:active {
+  border: none;
+  border-radius: 0;
+  display: block;
+  margin-top: -20px;
+  position: absolute;
+  z-index: 50;
+}
+
+.name-tag.hidden {
+  display: none;
+}

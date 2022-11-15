@@ -49,7 +49,7 @@ const shortcutsHandler = (e) => {
         break;
     }
   } else if (e.ctrlKey) {
-    switch(e.key) {
+    switch (e.key) {
       // Reset zoom if CTRL+1 is pressed
       case "1":
         e.preventDefault();
@@ -78,7 +78,7 @@ const shortcutsHandler = (e) => {
     }
   } else {
     const videoPlayer = viewer.videoPlayer;
-    switch(e.key) {
+    switch (e.key) {
       case "ArrowLeft":
         player.seekTo((Math.floor(player.currentTime / 5) - 1) * 5);
         break;

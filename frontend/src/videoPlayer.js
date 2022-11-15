@@ -174,6 +174,11 @@ export default class VideoPlayer {
     // confusion to the fps calculator
     this._fpsRounder.pop();
     this._frameNotSeeked = false;
+
+    if (this._video.paused) {
+      this._viewer.hideTags();
+      this._viewer.showTags();
+    }
   }
 
   /**
@@ -239,8 +244,10 @@ export default class VideoPlayer {
   togglePlay() {
     if (this._video.paused || this._video.ended) {
       this._video.play();
+      this._viewer.hideTags();
     } else {
       this._video.pause();
+      this._viewer.showTags();
     }
   }
 

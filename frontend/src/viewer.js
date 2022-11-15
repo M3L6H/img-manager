@@ -1,3 +1,4 @@
+import Pool from "./pool.js";
 import VideoPlayer from "./videoPlayer.js";
 import * as utils from "./utils.js";
 
@@ -19,6 +20,14 @@ const COLORS = [
   "194, 201, 2",
   "81, 194, 198"
 ];
+
+const freeNameTag = (nameTag) => {
+  nameTag.classList.add("hidden");
+};
+
+const reuseNameTag = (nameTag) => {
+  nameTag.classList.remove("hidden");
+};
 
 /**
  * Viewer class containing all the functionality to manage the viewport
@@ -53,8 +62,16 @@ export default class Viewer {
     // Data
     this._data = {};
 
+    // Elements
+    this._nameTagPool = new Pool(
+      (id) =>  this._createNameTagElt(id),
+      freeNameTag,
+      reuseNameTag
+    );
+
     // State
     this._creatingRect = false;
+    this._namingRect = false;
     this._drawingRect = false;
     this._panning = false;
 
@@ -77,6 +94,103 @@ export default class Viewer {
   *****************************************************************************/
 
   /**
+   * Called to create a name tag for a rectangle
+   * @param {*} rect Rect to create the name tag for
+   */
+  _createNameTag(rect) {
+    this._namingRect = true;
+
+    const nameTag = this._initNameTag(rect);
+    nameTag.focus();
+  }
+
+  /**
+   * Called by the pool to create a new name tag element
+   * @param {Number} id Id of the name tag we are creating
+   * @returns The created name tag element
+   */
+  _createNameTagElt(id) {
+    const input = document.createElement("input");
+    input.classList.add("name-tag");
+    input.id = `name-tag-${id}`;
+
+    const validInput = (e) => {
+      const { data } = e;
+
+      if (data !== null && !data.match(/[-0-9A-Za-z ]/)) {
+        e.preventDefault();
+      }
+    };
+
+    const modifyInput = (e) => {
+      const { value } = e.target;
+
+      e.target.value = value.toLowerCase().replace(" ", "-");
+    };
+
+    input.addEventListener("beforeinput", validInput);
+    input.addEventListener("input", modifyInput);
+    input.addEventListener("keyup", e => e.stopPropagation());
+
+    this._viewer.appendChild(input);
+    return input;
+  }
+
+  /**
+   * Calculate the index of the COLORS array to use based on x/y coords
+   * @param {Number} x X position
+   * @param {Number} y Y position
+   * @returns The index in the COLORS array to use
+   */
+  _colorIdx(x, y) {
+    return parseInt(`${(x % 4).toString(2)}${(y % 4).toString(2)}`, 2);
+  }
+
+  /**
+   * Called to initialize a name tag for a rectangle
+   * @param {*} rect Rect to create the name tag for
+   * @returns The input for the nameTag
+   */
+  _initNameTag(rect) {
+    const { scale, dx, dy } = this.offsets;
+    const { x1: x, y1: y, name } = rect;
+
+    const { item: input } = this._nameTagPool.getOne();
+    input.value = name || "";
+    input.style.outlineColor = `rgb(${COLORS[this._colorIdx(x, y)]})`;
+    input.style.left = `${x * scale + dx}px`;
+    input.style.top = `${y * scale + dy}px`;
+    input.dataset.rect = `${x}-${y}`;
+
+    const finishNameTag = (e) => {
+      const { value } = e.target;
+
+      if (value.length == 0) {
+        input.focus();
+        return;
+      }
+
+      input.blur();
+      rect.name = value;
+      this._namingRect = false;
+      this._creatingRect = false;
+    };
+
+    input.onfocusout = finishNameTag;
+    input.onkeydown =  e => {
+      e.stopPropagation();
+
+      switch (e.key) {
+        case "Enter":
+          finishNameTag(e);
+          break;
+      }
+    };
+
+    return input;
+  }
+
+  /**
    * Private helper to check if a coordinate pair is within media limits
    * @param {Number} x X position to check
    * @param {Number} y Y position to check
@@ -85,6 +199,19 @@ export default class Viewer {
   _inLimits(x, y) {
     const { topLimit, bottomLimit, leftLimit, rightLimit } = this.limits;
     return leftLimit < x && x < rightLimit && topLimit < y && y < bottomLimit;
+  }
+
+  /**
+   * Called to update the positions of all the name tags
+   */
+  _updateNameTagPositions() {
+    const { scale, dx, dy } = this.offsets;
+
+    for (const nameTag of this._nameTagPool.active) {
+      const [x, y] = nameTag.dataset.rect.split("-").map(parseFloat);
+      nameTag.style.top = `${y * scale + dy}px`;
+      nameTag.style.left = `${x * scale + dx}px`;
+    }
   }
 
   /**
@@ -99,6 +226,13 @@ export default class Viewer {
    * Called to cancel the creation of a rectangle
    */
   cancelRect() {
+    if (this._namingRect) {
+      this._namingRect = false;
+      const { x1, y1 } = this._rects.pop();
+      const input = document.querySelector(`[data-${x1}-${y1}]:not(.hidden)`);
+      this._nameTagPool.freeOne(input.id);
+    }
+
     if (this._drawingRect) {
       this._drawingRect = false;
       this._rects.pop();
@@ -112,6 +246,8 @@ export default class Viewer {
    * Called to start the process of creating a rectangle
    */
   createRect() {
+    if (this._creatingRect) return;
+
     this._creatingRect = true;
     this._canvas.style.cursor = "crosshair";
   }
@@ -126,7 +262,7 @@ export default class Viewer {
 
     for (let i = 0; i < this._rects.length; ++i) {
       const { x1, y1, x2, y2, hovered } = this._rects[i];
-      const colorIdx = parseInt(`${(x1 % 4).toString(2)}${(y1 % 4).toString(2)}`, 2);
+      const colorIdx = this._colorIdx(x1, y1);
       let strokeAlpha = 0.5, fillAlpha = 0.25;
 
       if (this._drawingRect && i == this._rects.length - 1) {
@@ -144,6 +280,13 @@ export default class Viewer {
     }
 
     requestAnimationFrame(() => this.drawFrame());
+  }
+
+  /**
+   * Called to hide all present tags
+   */
+  hideTags() {
+    this._nameTagPool.freeAll();
   }
 
   /**
@@ -215,6 +358,8 @@ export default class Viewer {
     this._baseScale = this._scale;
     this._baseTop = top;
     this._baseLeft = left;
+
+    this._updateNameTagPositions();
   }
 
   /**
@@ -223,6 +368,17 @@ export default class Viewer {
   resizeCanvas() {
     this._canvas.height = this._viewerHeight;
     this._canvas.width = this._viewerWidth;
+  }
+
+  /**
+   * Called to show any name tags that are present on the current frame
+   */
+  showTags() {
+    for (const rect of this._rects) {
+      this._initNameTag(rect);
+    }
+
+    this._updateNameTagPositions();
   }
 
   /**
@@ -290,6 +446,8 @@ export default class Viewer {
         left + (curRel.left - curRel.left * dS)
       ];
     }
+
+    this._updateNameTagPositions();
   }
 
   /*****************************************************************************
@@ -304,9 +462,9 @@ export default class Viewer {
 
     if (this._drawingRect) {
       this._drawingRect = false;
-      this._creatingRect = false;
       this._canvas.style.cursor = "";
-    } else if (this._creatingRect && this._inLimits(e.pageX, e.pageY)) {
+      this._createNameTag(this._rects[this._rects.length - 1]);
+    } else if (this._creatingRect && !this._namingRect && this._inLimits(e.pageX, e.pageY)) {
       this._drawingRect = true;
       this._rects.push({
         x1: (e.pageX - dx) / scale,
@@ -392,6 +550,10 @@ export default class Viewer {
 
     if (hoveredIdx != -1) {
       this._rects[hoveredIdx].hovered = true;
+    }
+
+    if (this._panning) {
+      this._updateNameTagPositions();
     }
   }
 
